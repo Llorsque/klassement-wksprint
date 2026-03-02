@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ISU WK Sprint 2026 — Heerenveen</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__left">
+      <button id="menuBtn" class="menu-btn" aria-label="Menu">☰</button>
+      <div class="topbar__brand">
+        <span class="topbar__logo">ISU</span>
+        <div>
+          <div class="topbar__title">World Sprint Championships 2026</div>
+          <div class="topbar__sub">Thialf · Heerenveen · 5–6 March</div>
+        </div>
+      </div>
+      <span id="statusBadge" class="badge badge--waiting">
+        <span class="badge__dot"></span>
+        <span id="statusText">Loading…</span>
+      </span>
+    </div>
+    <div id="genderTabs" class="tab-row">
+      <button class="tab active" data-gender="v">Women</button>
+      <button class="tab" data-gender="m">Men</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav id="sidebar" class="sidebar">
+      <div id="navButtons" class="nav-group"></div>
+      <div class="sidebar__footer">
+        <label style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:4px">📡 Poll:
+          <select id="pollSelect" class="sel" style="font-size:10px;padding:2px 4px"></select>
+        </label>
+      </div>
+    </nav>
+    <main class="main">
+      <div id="contentArea" class="content"></div>
+    </main>
+  </div>
+
+  <div id="mobileMenu" class="mobile-menu" hidden>
+    <div id="mobileNav" class="mobile-nav"></div>
+  </div>
+
+  <div id="overlay" class="overlay" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
