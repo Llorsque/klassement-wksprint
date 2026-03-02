@@ -127,22 +127,75 @@ function parseAPIStartList(raw){
     return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",
       no:r.competitor.number||r.startNumber||0,
       startLane:r.startLane||r.lane||"",
-      pairNumber:r.pairNumber??null,pb:typeof pb==="string"?pb:""};
+      _rawPair:r.pairNumber??null,pairNumber:0,pb:typeof pb==="string"?pb:""};
   });
-  // Fix pair numbers: if null/0, inherit from previous item (same pair)
-  // If a value is present, it's a new pair
-  let currentPair=1;
-  for(let i=0;i<items.length;i++){
-    if(items[i].pairNumber!=null&&items[i].pairNumber>0){
-      currentPair=items[i].pairNumber;
+  return assignPairs(items);
+}
+
+/**
+ * Assign correct pair numbers and lanes to a start-list.
+ * Rules:
+ *  - Items are in order: pair 1 first, pair 2 second, etc.
+ *  - First rider of a pair has a pair number in _rawPair; second has null/0
+ *  - Within a 2-rider pair: Inner (I/white) is ALWAYS listed first, Outer (O/red) second
+ *  - A solo pair has just 1 rider
+ *  - If _rawPair data is missing/unreliable, infer from lanes:
+ *    seeing two consecutive riders = a pair, standalone = solo
+ */
+function assignPairs(items){
+  if(!items.length)return items;
+  // Step 1: Try pair assignment from _rawPair data
+  // A new _rawPair value (>0 and different from current) starts a new pair
+  // null/0/_rawPair same as current = same pair
+  let hasPairData=items.some(it=>it._rawPair!=null&&it._rawPair>0);
+
+  if(hasPairData){
+    let cur=0;
+    for(const it of items){
+      if(it._rawPair!=null&&it._rawPair>0&&it._rawPair!==cur){
+        cur=it._rawPair;
+      }
+      it.pairNumber=cur;
     }
-    items[i].pairNumber=currentPair;
+  }else{
+    // No pair data at all: infer from lane pattern
+    // I then O = pair of 2; standalone = solo
+    let pn=1;
+    for(let i=0;i<items.length;i++){
+      items[i].pairNumber=pn;
+      // If this is I and next is O: they form a pair, skip next
+      if(items[i].startLane==="I"&&i+1<items.length&&items[i+1].startLane==="O"){
+        items[i+1].pairNumber=pn;
+        i++;// skip next
+      }
+      pn++;
+    }
+    // Renumber sequentially
+    let seen=new Map(),seq=1;
+    for(const it of items){
+      if(!seen.has(it.pairNumber))seen.set(it.pairNumber,seq++);
+      it.pairNumber=seen.get(it.pairNumber);
+    }
   }
-  // If all were null, infer pairs (2 per pair, first is solo if odd)
-  if(items.length>0&&items.every((it,i)=>it.pairNumber===1)){
-    let pn=1;for(let i=0;i<items.length;i++){items[i].pairNumber=pn;if(i%2===1)pn++;}
-    if(items.length%2===1)items[items.length-1].pairNumber=Math.ceil(items.length/2);
+
+  // Step 2: Fix lanes within each pair
+  // Group by pair
+  const pairs=new Map();
+  for(const it of items){if(!pairs.has(it.pairNumber))pairs.set(it.pairNumber,[]);pairs.get(it.pairNumber).push(it)}
+  for(const[_,group]of pairs){
+    if(group.length===2){
+      // 2 riders: first = Inner (white), second = Outer (red)
+      group[0].startLane="I";
+      group[1].startLane="O";
+    }
+    // Solo: keep whatever lane, or default to O if empty
+    if(group.length===1&&!group[0].startLane){
+      group[0].startLane="O";
+    }
   }
+
+  // Clean up temp field
+  for(const it of items)delete it._rawPair;
   return items;
 }
 
@@ -185,23 +238,21 @@ function parseTextResults(text){
 function parseTextStartList(text){
   if(!text)return[];
   const list=[],lines=text.split(/\n/);
-  let currentPair=0;
   for(const line of lines){
-    // Clean the line first
     const clean=cleanJinaName(line);
     if(!clean||clean.length<3)continue;
-    // Skip headers
     if(/^(pair|lane|name|time|behind|rank|no\b)/i.test(clean.trim()))continue;
-    // Detect pair number at start of line
-    const pairMatch=clean.match(/^\s*(\d{1,2})\s+[OI]\s/);
-    if(pairMatch)currentPair=parseInt(pairMatch[1]);
+    // Detect pair number: digit at start of cleaned line
+    let pairNum=null;
+    const pairMatch=clean.match(/^\s*(\d{1,2})\s/);
+    if(pairMatch)pairNum=parseInt(pairMatch[1]);
     const pm=clean.match(/(?:pair|rit)[:\s]*(\d+)/i);
-    if(pm)currentPair=parseInt(pm[1]);
+    if(pm)pairNum=parseInt(pm[1]);
     // Lane
     const laneMatch=clean.match(/\b([OI])\b/);
     const lane=laneMatch?laneMatch[1]:"";
-    // Name: look for First Last pattern
-    const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F'-]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
+    // Name
+    const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F\'-]+(?:\s+[A-Za-z\u00C0-\u017F\'-]+)+)/);
     if(!nm)continue;
     const name=nm[1].trim();
     if(name.length<4||/^(Pair|Lane|Name|Time|Behind|Rank)/i.test(name))continue;
@@ -211,13 +262,11 @@ function parseTextStartList(text){
     // PB
     const pbMatch=clean.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
     const pb=pbMatch?pbMatch[1].replace(",","."):"";
-    // NO
     const noMatch=clean.match(/\b(\d{2,3})\b/);
     const no=noMatch?parseInt(noMatch[1]):0;
-    if(!currentPair)currentPair=Math.ceil((list.length+1)/2);
-    list.push({name,country:cc,no,startLane:lane,pairNumber:currentPair,pb});
+    list.push({name,country:cc,no,startLane:lane,_rawPair:pairNum,pairNumber:0,pb});
   }
-  return list;
+  return assignPairs(list);
 }
 
 async function fetchGender(g,onlyDist){
