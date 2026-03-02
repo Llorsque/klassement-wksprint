@@ -40,7 +40,7 @@ function recordBadge(rec){if(!rec)return"";if(rec==="TR"||rec==="WR")return`<spa
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
 // ── STATE ───────────────────────────────────────────────
-const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all"};
+const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all",tile3Mode:"startlist"};
 const dataCache={v:{},m:{}};
 const startListCache={v:{},m:{}};
 const frozenStandings={v:null,m:null};
@@ -385,7 +385,13 @@ function renderOverview(){
         <div class="tile-body" id="tile2Body"></div>
       </div>
       <div class="overview-tile" id="tile3">
-        <div class="tile-header"><span class="tile-header__title">③ Start List — ${esc(selDist.label)}</span><span class="tile-header__badge" style="background:rgba(246,173,85,.1);color:var(--orange)">Target for P1</span></div>
+        <div class="tile-header">
+          <span class="tile-header__title">③ <span id="tile3Title">${state.tile3Mode==="startlist"?"Start List":"Next Pair"} — ${esc(selDist.label)}</span></span>
+          <span style="display:flex;gap:4px">
+            <button class="tile-tab${state.tile3Mode==="startlist"?" tile-tab--active":""}" data-t3mode="startlist">Start List</button>
+            <button class="tile-tab${state.tile3Mode==="nextpair"?" tile-tab--active":""}" data-t3mode="nextpair">Next Pair</button>
+          </span>
+        </div>
         <div class="tile-body" id="tile3Body"></div>
       </div>
       <div class="overview-tile" id="tile4">
@@ -397,7 +403,10 @@ function renderOverview(){
       </div>
     </div>`;
   document.getElementById("distSel")?.addEventListener("change",e=>{state.selectedDist=e.target.value;render()});
-  fillTile1(selDist);fillTile2();fillTile3(selDist);fillTile4(nextDist);
+  document.querySelectorAll("[data-t3mode]").forEach(b=>b.addEventListener("click",e=>{state.tile3Mode=e.target.dataset.t3mode;render()}));
+  fillTile1(selDist);fillTile2();
+  if(state.tile3Mode==="nextpair")fillTile3NextPair(selDist);else fillTile3(selDist);
+  fillTile4(nextDist);
 }
 
 function fillTile1(dist){
@@ -448,6 +457,102 @@ function fillTile3(dist){
     }
   }
   body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Rit</th><th></th><th>Name</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/** Find the first pair on this distance where not all riders have results yet */
+function getNextPair(dist){
+  const g=state.gender;
+  const sl=startListCache[g][dist.key]??[];
+  const results=dataCache[g][dist.key]??[];
+  const resultNames=new Set(results.map(r=>r.name));
+  // Group by pair
+  const pairs=new Map();
+  for(const s of sl){const pn=s.pairNumber||0;if(!pairs.has(pn))pairs.set(pn,[]);pairs.get(pn).push(s)}
+  // Find first pair where at least one rider has no result
+  for(const[pn,skaters]of pairs){
+    const allDone=skaters.every(s=>resultNames.has(s.name));
+    if(!allDone)return{pairNum:pn,skaters};
+  }
+  // All done: return last pair
+  if(pairs.size>0){const last=[...pairs.entries()].pop();return{pairNum:last[0],skaters:last[1],allDone:true}}
+  return null;
+}
+
+function fillTile3NextPair(dist){
+  const body=document.getElementById("tile3Body");if(!body)return;
+  const g=state.gender;
+  const next=getNextPair(dist);
+  if(!next||!next.skaters.length){
+    body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">No start list available</div>`;return;
+  }
+  const{pairNum,skaters,allDone}=next;
+  const ds=getDists();
+
+  // Solo pair
+  if(skaters.length===1){
+    const s=skaters[0];
+    const a=standings?.all?.find(x=>x.name===s.name);
+    const lPts=standings?.leader?.currentPoints;
+    const nt=a?neededTime(a,dist.key,lPts):null;
+    const ntStr=Number.isFinite(nt)&&nt>0?fmtTime(nt):"";
+    body.innerHTML=`<div style="padding:16px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px">Rit ${pairNum} — Solo${allDone?' <span style="color:var(--green)">✓ Finished</span>':""}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${laneDot(s.startLane)} <span class="athlete" data-name="${esc(s.name)}" style="font-size:14px;font-weight:600">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></div>
+      ${a?`<div class="stat-grid" style="margin-bottom:8px">
+        <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
+        <div class="stat-box"><div class="stat-box__label">Points</div><div class="stat-box__value">${fmtPts(a.currentPoints)}</div></div>
+        <div class="stat-box"><div class="stat-box__label">Target P1</div><div class="stat-box__value">${ntStr||"—"}</div></div>
+      </div>`:""}
+    </div>`;
+    return;
+  }
+
+  // Two riders: H2H comparison
+  const sA=skaters[0],sB=skaters[1];
+  const rA=standings?.all?.find(x=>x.name===sA.name);
+  const rB=standings?.all?.find(x=>x.name===sB.name);
+  if(!rA||!rB){body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">Standings not yet available</div>`;return}
+
+  const pA=rA.currentPoints,pB=rB.currentPoints;
+  const nameA=shortName(rA.name),nameB=shortName(rB.name);
+  const ptsDiff=Number.isFinite(pA)&&Number.isFinite(pB)?pA-pB:null;
+  const ptsDiffStr=Number.isFinite(ptsDiff)?`${Math.abs(ptsDiff)<0.001?"Even":ptsDiff<0?`${nameA} +${fmtPts(Math.abs(ptsDiff))}`:`${nameB} +${fmtPts(ptsDiff)}`}`:"—";
+  const timeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
+  const timeDiffStr=Number.isFinite(timeDiff)?fmtDelta(timeDiff):"—";
+
+  // PB for this distance
+  const pbA=sA.pb?fmtTime(parseTime(sA.pb)):"";
+  const pbB=sB.pb?fmtTime(parseTime(sB.pb)):"";
+
+  // Rows per distance
+  const rows=ds.map(d=>{
+    const secA=rA.seconds[d.key],secB=rB.seconds[d.key];
+    const tA=Number.isFinite(secA)?fmtTime(secA):"—",tB=Number.isFinite(secB)?fmtTime(secB):"—";
+    const recA=(dataCache[g][d.key]??[]).find(r=>r.name===rA.name)?.record;
+    const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
+    let diff="";
+    if(Number.isFinite(secA)&&Number.isFinite(secB)){const dd=secA-secB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
+    const hl=d.key===dist.key?' style="background:rgba(0,153,229,.08)"':"";
+    return`<tr${hl}><td class="mono" style="text-align:right;font-size:11px">${tA} ${recordBadge(recA)}</td><td style="text-align:center;font-size:10px;color:var(--text-dim)">${esc(d.label)}</td><td class="mono" style="font-size:11px">${tB} ${recordBadge(recB)}</td><td style="text-align:center;font-size:11px">${diff}</td></tr>`;
+  }).join("");
+
+  body.innerHTML=`<div style="padding:10px 12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</div>
+      <div style="font-size:10px;color:var(--text-dim)">${ptsDiffStr} = ${timeDiffStr} on ${esc(dist.label)}</div>
+    </div>
+    <table class="tbl tbl--compact" style="font-size:11px">
+      <thead><tr>
+        <th style="text-align:right">${laneDot("I")} ${esc(nameA)}${pbA?` <span style="font-weight:400;color:var(--text-muted)">PB ${pbA}</span>`:""}<br><span style="font-weight:400;font-size:10px;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)}</span></th>
+        <th style="text-align:center;font-size:10px"></th>
+        <th>${laneDot("O")} ${esc(nameB)}${pbB?` <span style="font-weight:400;color:var(--text-muted)">PB ${pbB}</span>`:""}<br><span style="font-weight:400;font-size:10px;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)}</span></th>
+        <th style="text-align:center;font-size:10px">Δ</th>
+      </tr></thead>
+      <tbody>${rows}
+        <tr style="border-top:2px solid var(--border)"><td class="mono" style="text-align:right;font-weight:700">${fmtPts(pA)}</td><td style="text-align:center;font-size:10px;color:var(--text-dim)">Pts</td><td class="mono" style="font-weight:700">${fmtPts(pB)}</td><td style="text-align:center;font-size:10px">${ptsDiffStr}</td></tr>
+      </tbody>
+    </table>
+  </div>`;
 }
 
 function fillTile4(nextDist){

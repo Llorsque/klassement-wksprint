@@ -68,6 +68,11 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .tile-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);flex-shrink:0}
 .tile-header__title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--isu-blue)}
 .tile-header__badge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
+
+/* ── Tile tab toggles ────────────────────────────────── */
+.tile-tab{font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-weight:600;transition:all .15s}
+.tile-tab:hover{border-color:var(--isu-blue);color:var(--isu-blue)}
+.tile-tab--active{background:var(--isu-blue);color:#fff;border-color:var(--isu-blue)}
 .tile-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .tile-body::-webkit-scrollbar{width:4px}
 .tile-body::-webkit-scrollbar-track{background:transparent}
