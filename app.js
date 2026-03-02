@@ -57,24 +57,47 @@ function getCompId(g,dKey){return DISTANCES[g].find(d=>d.key===dKey)?.compId}
 // ── FETCH ───────────────────────────────────────────────
 async function fetchJSON(compId,type="results"){
   const cb=Date.now();
+  const apiUrl=`${API_BASE}/${compId}/${type}/`;
   // Try 1: Direct API
   try{
-    const r=await fetch(`${API_BASE}/${compId}/${type}/?_=${cb}`,{cache:"no-store"});
-    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0)return arr}
+    const r=await fetch(`${apiUrl}?_=${cb}`,{cache:"no-store"});
+    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} direct API ✅`);return arr}}
   }catch(_){}
-  // Try 2: allorigins proxy
+  // Try 2: allorigins proxy (on API url for JSON)
   try{
-    const u=`${API_BASE}/${compId}/${type}/`;
-    const r=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(u)}&_=${cb}`,{cache:"no-store"});
-    if(r.ok){const w=await r.json();const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0)return arr}
+    const r=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&_=${cb}`,{cache:"no-store"});
+    if(r.ok){const w=await r.json();if(w.contents){const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} allorigins ✅`);return arr}}}
   }catch(_){}
-  // Try 3: Jina reader (text fallback)
+  // Try 3: corsproxy.io
+  try{
+    const r=await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"});
+    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} corsproxy ✅`);return arr}}
+  }catch(_){}
+  // Try 4: Jina reader on LIVE page (text fallback)
   try{
     const url=`${LIVE_BASE}/${compId}/${type}`;
-    const r=await fetch(`${JINA}${url}?_=${cb}`,{cache:"no-store"});
-    if(r.ok){const t=await r.text();if(t.length>200)return{_text:t}}
+    const r=await fetch(`${JINA}${url}?_=${cb}`,{cache:"no-store",headers:{"Accept":"text/plain"}});
+    if(r.ok){const t=await r.text();if(t.length>200){console.log(`[WK] C${compId}/${type} jina text ✅ (${t.length} chars)`);return{_text:t}}}
   }catch(_){}
   return null;
+}
+
+/** Clean Jina markdown artifacts from text */
+function cleanJinaName(raw){
+  let s=raw;
+  // Remove markdown links: [text](url) → text
+  s=s.replace(/\[([^\]]*)\]\([^)]*\)/g,"$1");
+  // Remove leftover pipes, brackets, asterisks
+  s=s.replace(/\|/g," ").replace(/\[/g,"").replace(/\]/g,"");
+  // Remove competitor numbers like "122" at start
+  s=s.replace(/^\s*\d{2,3}\s+/,"");
+  // Remove record prefixes
+  s=s.replace(/^\s*\*?\s*(WR|TR|PB|NR|SR)\s+/i,"");
+  // Remove URLs
+  s=s.replace(/https?:\/\/[^\s)]+/g,"");
+  // Collapse whitespace
+  s=s.replace(/\s+/g," ").trim();
+  return s;
 }
 
 function parseAPIResults(raw){
@@ -134,55 +157,63 @@ function parseTextResults(text){
     if(!m)continue;
     const rawTime=m[1].replace(",",".");
     const sec=parseTime(rawTime);if(!sec)continue;
-    const before=line.substring(0,m.index).trim();
+    const before=line.substring(0,m.index);
     const after=line.substring(m.index+m[1].length);
     // Detect record badges
-    let rec="";if(/\bTR\b/.test(after))rec="TR";else if(/\bWR\b/.test(after))rec="WR";else if(/\bPB\b/.test(after))rec="PB";
-    // Extract NO and lane dot
-    const noMatch=before.match(/(\d{1,3})\s*[●○🔴⚪]?\s*/);
-    const no=noMatch?parseInt(noMatch[1]):0;
-    const laneMatch=before.match(/[●🔴]/);
-    const lane=laneMatch?"O":before.match(/[○⚪]/i)?"I":"";
-    // Country code
-    const ccMatch=before.match(/\b([A-Z]{3})\s*$/)||line.match(/\b([A-Z]{3})\b/);
-    const cc=ccMatch?ccMatch[1]:"";
-    // Name: strip rank number, NO, lane dots, country
-    let nameStr=before.replace(/^\d+\s*/,"").replace(/\d{1,3}\s*[●○🔴⚪]?\s*/,"").replace(/\b[A-Z]{3}\s*$/,"").replace(/[●○🔴⚪⊞⊕]/g,"").trim();
-    if(nameStr.length<2)continue;
-    // Behind: look for +X.XX after time
+    let rec="";if(/\bTR\b/.test(line))rec="TR";else if(/\bWR\b/.test(line))rec="WR";else if(/\bPB\b/.test(line))rec="PB";
+    // Clean the whole line from Jina markdown, then extract fields
+    const cleanLine=cleanJinaName(before);
+    // Country code: last 3-letter uppercase word
+    const ccMatch=cleanLine.match(/\b([A-Z]{3})\s*$/)||cleanLine.match(/\b([A-Z]{3})\b/);
+    let cc=ccMatch?ccMatch[1]:"";
+    if(["WR","TR","PB","NR","SR","DNS","DNF","DSQ","OMS"].includes(cc))cc="";
+    // Name: strip leading rank number, trailing country code
+    let nameStr=cleanLine.replace(/^\d+\s*/,"").replace(/\s*[A-Z]{3}\s*$/,"").replace(/^\s*\*?\s*(WR|TR|PB|NR|SR)\s*/i,"").trim();
+    if(nameStr.length<3)continue;
+    // Skip header rows
+    if(/^(rank|name|time|behind|lane|pair|no\b)/i.test(nameStr))continue;
+    // Behind
     const behindMatch=after.match(/\+(\d{1,2}[:\.]?\d{2}[\.,]\d{2,3}|\d+[\.,]\d{2,3})/);
     const behind=behindMatch?behindMatch[0]:"";
-    results.push({name:nameStr,country:cc,time:rawTime,seconds:trunc2(sec),rank:results.length+1,no,timeBehind:behind,startLane:lane,record:rec,laps:[]});
+    results.push({name:nameStr,country:cc,time:rawTime,seconds:trunc2(sec),rank:results.length+1,no:0,timeBehind:behind,startLane:"",record:rec,laps:[]});
   }
-  return results;
+  // Deduplicate by name (Jina sometimes outputs duplicates)
+  const seen=new Set(),deduped=[];
+  for(const r of results){const k=r.name+"|"+r.seconds;if(!seen.has(k)){seen.add(k);deduped.push(r)}}
+  return deduped;
 }
 function parseTextStartList(text){
   if(!text)return[];
   const list=[],lines=text.split(/\n/);
   let currentPair=0;
   for(const line of lines){
-    // A line starting with a number followed by lane letter = new pair
-    const pairMatch=line.match(/^\s*(\d{1,2})\s+[OI]\s/);
+    // Clean the line first
+    const clean=cleanJinaName(line);
+    if(!clean||clean.length<3)continue;
+    // Skip headers
+    if(/^(pair|lane|name|time|behind|rank|no\b)/i.test(clean.trim()))continue;
+    // Detect pair number at start of line
+    const pairMatch=clean.match(/^\s*(\d{1,2})\s+[OI]\s/);
     if(pairMatch)currentPair=parseInt(pairMatch[1]);
-    // Also match "Pair: X" or "Rit X"
-    const pm=line.match(/(?:pair|rit)[:\s]*(\d+)/i);
+    const pm=clean.match(/(?:pair|rit)[:\s]*(\d+)/i);
     if(pm)currentPair=parseInt(pm[1]);
-    // Detect lane
-    const laneMatch=line.match(/\b([OI])\b/);
+    // Lane
+    const laneMatch=clean.match(/\b([OI])\b/);
     const lane=laneMatch?laneMatch[1]:"";
-    // Detect NO
-    const noMatch=line.match(/\b(\d{2,3})\b/);
-    // Detect name
-    const nm=line.match(/([A-Z][a-zA-Z\u00C0-\u017F'-]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
+    // Name: look for First Last pattern
+    const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F'-]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
     if(!nm)continue;
     const name=nm[1].trim();
     if(name.length<4||/^(Pair|Lane|Name|Time|Behind|Rank)/i.test(name))continue;
-    const ccm=line.match(/\b([A-Z]{3})\b/g);
-    const cc=ccm?ccm.find(c=>c!=="PB"&&c!=="NO"&&c!=="TR"&&c!=="WR")||"":"";
-    const pbMatch=line.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
+    // Country
+    const ccm=clean.match(/\b([A-Z]{3})\b/g);
+    let cc=ccm?ccm.find(c=>!["PB","NO","TR","WR","NR","SR","DNS","DNF","DSQ"].includes(c))||"":"";
+    // PB
+    const pbMatch=clean.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
     const pb=pbMatch?pbMatch[1].replace(",","."):"";
+    // NO
+    const noMatch=clean.match(/\b(\d{2,3})\b/);
     const no=noMatch?parseInt(noMatch[1]):0;
-    // If no pair number found on this line, use current (same pair)
     if(!currentPair)currentPair=Math.ceil((list.length+1)/2);
     list.push({name,country:cc,no,startLane:lane,pairNumber:currentPair,pb});
   }
