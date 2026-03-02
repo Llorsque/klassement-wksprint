@@ -26,8 +26,8 @@ const DISTANCES={
 // ── UTILS ───────────────────────────────────────────────
 function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 function parseTime(raw){if(!raw||typeof raw!=="string")return null;const s=raw.trim().replace(",",".");const mc=s.match(/^(\d{1,2}):(\d{2}(?:\.\d{1,3})?)$/);if(mc)return parseFloat(mc[1])*60+parseFloat(mc[2]);const n=parseFloat(s);return Number.isFinite(n)&&n>0?n:null}
-function fmtTime(sec){if(!Number.isFinite(sec)||sec<=0)return"—";const m=Math.floor(sec/60),s=sec-m*60;const str=s.toFixed(2).padStart(5,"0");return m>0?`${m}:${str}`:`${str}`}
-function fmtDelta(sec){if(!Number.isFinite(sec))return"—";const r=Math.round(sec*100)/100;const sign=r<0?"−":"+",abs=Math.abs(r);const m=Math.floor(abs/60);const s2=(abs-m*60).toFixed(2);return m>0?`${sign}${m}:${s2.padStart(5,"0")}`:`${sign}${s2}`}
+function fmtTime(sec){if(!Number.isFinite(sec)||sec<=0)return"—";const m=Math.floor(sec/60),s=sec-m*60;const str=s.toFixed(2).padStart(5,"0").replace(".",",");return m>0?`${m}:${str}`:`${str}`}
+function fmtDelta(sec){if(!Number.isFinite(sec))return"—";const r=Math.round(sec*100)/100;const sign=r<0?"−":"+",abs=Math.abs(r);const m=Math.floor(abs/60);const s2=(abs-m*60).toFixed(2).replace(".",",");return m>0?`${sign}${m}:${s2.padStart(5,"0")}`:`${sign}${s2}`}
 function fmtPts(p){return Number.isFinite(p)?p.toFixed(3):"—"}
 function trunc3(n){return Math.floor(n*1000)/1000}
 function trunc2(n){return Math.floor(n*100)/100}
@@ -35,6 +35,8 @@ function medal(r){return{1:"🥇",2:"🥈",3:"🥉"}[r]??""}
 function podCls(r){return r>=1&&r<=3?` row--${["","gold","silver","bronze"][r]}`:"";}
 function shortName(name){const p=(name??"").split(" ");return p.length>1?p[p.length-1]:name}
 function flag(cc){if(!cc)return"";try{return String.fromCodePoint(...[...cc.toUpperCase()].map(c=>0x1F1E6+c.charCodeAt(0)-65))}catch(_){return cc}}
+function laneDot(lane){return lane==="O"||lane==="Outer"?'<span class="lane-dot lane-dot--outer" title="Outer"></span>':lane==="I"||lane==="Inner"?'<span class="lane-dot lane-dot--inner" title="Inner"></span>':""}
+function recordBadge(rec){if(!rec)return"";if(rec==="TR"||rec==="WR")return`<span class="rec-badge rec-badge--tr">${esc(rec)}</span>`;if(rec==="PB")return'<span class="rec-badge rec-badge--pb">PB</span>';return""}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
 // ── STATE ───────────────────────────────────────────────
@@ -76,9 +78,15 @@ function parseAPIResults(raw){
   if(!Array.isArray(raw))return[];
   return raw.filter(r=>r.time&&r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
+    // Detect record: API may use records array, isTrackRecord, or flags
+    let rec="";
+    if(r.records){if(r.records.includes("TR")||r.records.includes("track"))rec="TR";else if(r.records.includes("PB")||r.records.includes("personal"))rec="PB"}
+    if(!rec&&r.isTrackRecord)rec="TR";
+    if(!rec&&r.isPersonalBest)rec="PB";
     return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",rank:r.rank,
+      no:r.competitor.number||r.startNumber||0,
       time:r.time,seconds:trunc2(parseTime(r.time)),timeBehind:r.timeBehind||"",
-      startNumber:r.startNumber,startLane:r.startLane||"",status:r.status||0,
+      startLane:r.startLane||r.competitor?.startLane||"",record:rec,
       laps:r.laps||[]};
   }).filter(r=>r.seconds!=null&&r.seconds>0);
 }
@@ -86,30 +94,54 @@ function parseAPIResults(raw){
 function parseAPIStartList(raw){
   if(!raw||raw._text)return parseTextStartList(raw?._text);
   if(!Array.isArray(raw))return[];
-  return raw.filter(r=>r.competitor?.skater).map(r=>{
+  // API start-list: items may have pairNumber or need to be inferred from startNumber pairs
+  const items=raw.filter(r=>r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
+    const pb=r.personalBest||r.pb||r.seasonBest||"";
     return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",
-      startNumber:r.startNumber||0,startLane:r.startLane||"",pairNumber:r.startNumber||0};
+      no:r.competitor.number||r.startNumber||0,
+      startLane:r.startLane||r.lane||"",
+      pairNumber:r.pairNumber||0,pb:typeof pb==="string"?pb:""};
   });
+  // If pairNumber is 0 for all, infer pairs from order (2 per pair)
+  if(items.length>0&&items.every(i=>i.pairNumber===0)){
+    let pn=1;for(let i=0;i<items.length;i++){items[i].pairNumber=pn;if(i%2===1)pn++;}
+    // Handle odd number (solo last pair)
+    if(items.length%2===1)items[items.length-1].pairNumber=Math.ceil(items.length/2);
+  }
+  return items;
 }
 
 // Text fallback parsers (from Jina rendered HTML)
 function norm(n){return String(n??"").trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"").replace(/[\u2018\u2019`\u00B4\u2032\u02BC\u02BB']/g,"'").replace(/\s+/g," ")}
 function parseTextResults(text){
   if(!text)return[];
-  // Try to extract tabular data: rank, name, country, time
   const results=[],lines=text.split(/\n/);
-  const timeRe=/(\d{1,2}:\d{2}\.\d{2,3}|\d{2,3}\.\d{2,3})/;
+  const timeRe=/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/;
   for(const line of lines){
     const m=line.match(timeRe);
     if(!m)continue;
-    const sec=parseTime(m[1]);if(!sec)continue;
-    // Try to extract name and country from the line
+    const rawTime=m[1].replace(",",".");
+    const sec=parseTime(rawTime);if(!sec)continue;
     const before=line.substring(0,m.index).trim();
-    const ccMatch=before.match(/([A-Z]{3})\s*$/);
+    const after=line.substring(m.index+m[1].length);
+    // Detect record badges
+    let rec="";if(/\bTR\b/.test(after))rec="TR";else if(/\bWR\b/.test(after))rec="WR";else if(/\bPB\b/.test(after))rec="PB";
+    // Extract NO and lane dot
+    const noMatch=before.match(/(\d{1,3})\s*[●○🔴⚪]?\s*/);
+    const no=noMatch?parseInt(noMatch[1]):0;
+    const laneMatch=before.match(/[●🔴]/);
+    const lane=laneMatch?"O":before.match(/[○⚪]/i)?"I":"";
+    // Country code
+    const ccMatch=before.match(/\b([A-Z]{3})\s*$/)||line.match(/\b([A-Z]{3})\b/);
     const cc=ccMatch?ccMatch[1]:"";
-    const nameStr=before.replace(/\d+\s*/,"").replace(/[A-Z]{3}\s*$/,"").trim();
-    if(nameStr.length>2)results.push({name:nameStr,country:cc,time:m[1],seconds:trunc2(sec),rank:results.length+1,timeBehind:"",startNumber:0,startLane:"",status:0,laps:[]});
+    // Name: strip rank number, NO, lane dots, country
+    let nameStr=before.replace(/^\d+\s*/,"").replace(/\d{1,3}\s*[●○🔴⚪]?\s*/,"").replace(/\b[A-Z]{3}\s*$/,"").replace(/[●○🔴⚪⊞⊕]/g,"").trim();
+    if(nameStr.length<2)continue;
+    // Behind: look for +X.XX after time
+    const behindMatch=after.match(/\+(\d{1,2}[:\.]?\d{2}[\.,]\d{2,3}|\d+[\.,]\d{2,3})/);
+    const behind=behindMatch?behindMatch[0]:"";
+    results.push({name:nameStr,country:cc,time:rawTime,seconds:trunc2(sec),rank:results.length+1,no,timeBehind:behind,startLane:lane,record:rec,laps:[]});
   }
   return results;
 }
@@ -118,14 +150,26 @@ function parseTextStartList(text){
   const list=[],lines=text.split(/\n/);
   let pairNum=0;
   for(const line of lines){
-    const pm=line.match(/(?:pair|rit)\s*(\d+)/i);
+    // Detect pair number: "1" at start of row, or "Pair: 1"
+    const pm=line.match(/^[\s]*(\d{1,2})\s+[OI]\s/)||line.match(/(?:pair|rit)[:\s]*(\d+)/i);
     if(pm)pairNum=parseInt(pm[1]);
-    const nm=line.match(/([A-Z][a-z]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
-    const ccm=line.match(/\b([A-Z]{3})\b/);
-    if(nm){
-      const lane=line.includes("Inner")||line.includes("(I)")?"I":line.includes("Outer")||line.includes("(O)")?"O":"";
-      list.push({name:nm[1],country:ccm?ccm[1]:"",startNumber:pairNum,startLane:lane,pairNumber:pairNum});
-    }
+    // Detect lane
+    const laneMatch=line.match(/\b([OI])\b/);
+    const lane=laneMatch?laneMatch[1]:"";
+    // Detect NO
+    const noMatch=line.match(/\b(\d{2,3})\b/);
+    // Detect name (First Last pattern)
+    const nm=line.match(/([A-Z][a-zA-Z\u00C0-\u017F'-]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
+    if(!nm)continue;
+    const name=nm[1].trim();
+    if(name.length<4||/^(Pair|Lane|Name|Time|Behind|Rank)/i.test(name))continue;
+    const ccm=line.match(/\b([A-Z]{3})\b/g);
+    const cc=ccm?ccm.find(c=>c!=="PB"&&c!=="NO"&&c!=="TR"&&c!=="WR")||"":"";
+    // PB time
+    const pbMatch=line.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
+    const pb=pbMatch?pbMatch[1].replace(",","."):"";
+    const no=noMatch?parseInt(noMatch[1]):0;
+    list.push({name,country:cc,no,startLane:lane,pairNumber:pairNum||Math.ceil((list.length+1)/2),pb});
   }
   return list;
 }
@@ -139,7 +183,7 @@ async function fetchGender(g,onlyDist){
     const results=parseAPIResults(raw);
     if(results.length>0)dataCache[g][d.key]=results;
     // Fetch start-list (only on full fetch, not single-distance polls)
-    if(!onlyDist&&!startListCache[g][d.key]){
+    if(!onlyDist){
       const slRaw=await fetchJSON(d.compId,"start-list");
       const sl=parseAPIStartList(slRaw);
       if(sl.length>0)startListCache[g][d.key]=sl;
@@ -265,10 +309,11 @@ function fillTile1(dist){
   const fastest=results[0]?.seconds;
   const rows=results.map((r,i)=>{
     const rk=i+1;const diff=r.seconds-fastest;
-    const dStr=diff===0?'<span class="delta delta--leader">Leader</span>':`<span class="delta">${fmtDelta(diff)}</span>`;
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong></td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span><span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)}</td><td>${dStr}</td></tr>`;
+    const dStr=diff===0?"":`<span class="delta">${fmtDelta(diff)}</span>`;
+    const badge=recordBadge(r.record);
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong></td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td>${dStr}</td></tr>`;
   }).join("");
-  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Time</th><th>Gap</th></tr></thead><tbody>${rows}</tbody></table>`;
+  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Time</th><th>+</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function fillTile2(){
@@ -288,23 +333,23 @@ function fillTile3(dist){
   const sl=startListCache[state.gender][dist.key]??[];
   const lPts=standings?.leader?.currentPoints;
   if(!sl.length){
-    // No start-list: show "not yet available"
     body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">Start list not yet available</div>`;return;
   }
   // Group by pair
   const pairs=new Map();
-  for(const s of sl){const pn=s.pairNumber||s.startNumber||0;if(!pairs.has(pn))pairs.set(pn,[]);pairs.get(pn).push(s)}
-  let rows="";
+  for(const s of sl){const pn=s.pairNumber||0;if(!pairs.has(pn))pairs.set(pn,[]);pairs.get(pn).push(s)}
+  let rows="";let first=true;
   for(const[pn,skaters]of pairs){
-    for(const s of skaters){
+    for(let si=0;si<skaters.length;si++){
+      const s=skaters[si];
       const ath=standings?.all?.find(a=>a.name===s.name);
       const nt=ath?neededTime(ath,dist.key,lPts):null;
       const ntStr=Number.isFinite(nt)&&nt>0?`<span class="target-time">${fmtTime(nt)}</span>`:Number.isFinite(nt)?`<span class="needed-time">✓</span>`:"";
-      const lane=s.startLane==="I"?"Inner":s.startLane==="O"?"Outer":s.startLane;
-      rows+=`<tr><td><span class="pair-link" data-pair="${pn}" data-dist="${dist.key}">${pn}</span></td><td>${esc(lane)}</td><td><span class="athlete" data-name="${esc(s.name)}">${esc(s.name)}</span><span class="country">${esc(s.country)}</span></td><td>${ntStr}</td></tr>`;
+      const pairCell=si===0?`<span class="pair-link" data-pair="${pn}" data-dist="${dist.key}">${pn}</span>`:"";
+      rows+=`<tr><td>${pairCell}</td><td>${laneDot(s.startLane)}</td><td><span class="athlete" data-name="${esc(s.name)}">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></td><td>${ntStr}</td></tr>`;
     }
   }
-  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Pair</th><th>Lane</th><th>Name</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
+  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Rit</th><th></th><th>Name</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function fillTile4(nextDist){
@@ -337,8 +382,9 @@ function renderDistance(dKey){
 
   const mainR=results.map((r,i)=>{
     const rk=i+1;const diff=Number.isFinite(fastest)?r.seconds-fastest:null;
-    const dStr=diff===0?'<span class="delta delta--leader">Fastest</span>':Number.isFinite(diff)?`<span class="delta">${fmtDelta(diff)}</span>`:"";
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span><span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)}</td><td class="mono">${fmtPts(trunc3(r.seconds/dist.divisor))}</td><td>${dStr}</td></tr>`;
+    const dStr=diff===0?"":Number.isFinite(diff)?`<span class="delta">${fmtDelta(diff)}</span>`:"";
+    const badge=recordBadge(r.record);
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono">${fmtPts(trunc3(r.seconds/dist.divisor))}</td><td>${dStr}</td></tr>`;
   }).join("");
 
   // Sidebar standings
@@ -385,15 +431,23 @@ function renderKlassement(){
 
 // ── POPUP: Athlete ──────────────────────────────────────
 function openPopup(name){
-  if(!standings)return;const a=standings.all.find(x=>x.name===name);if(!a)return;const ds=getDists();
+  if(!standings)return;const a=standings.all.find(x=>x.name===name);if(!a)return;const ds=getDists();const g=state.gender;
   const rowed=ds.filter(d=>a.times[d.key]);
+  // Collect records and PB per distance
+  const records={},pbs={};
+  for(const d of ds){
+    const res=(dataCache[g][d.key]??[]).find(r=>r.name===name);
+    if(res?.record)records[d.key]=res.record;
+    const sl=(startListCache[g][d.key]??[]).find(s=>s.name===name);
+    if(sl?.pb)pbs[d.key]=sl.pb;
+  }
   let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>${esc(name)}</h3><div style="font-size:12px;color:var(--text-dim)">${flag(a.country)} ${esc(a.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
       <div class="stat-box"><div class="stat-box__label">Points</div><div class="stat-box__value">${fmtPts(a.currentPoints)}</div></div>
       <div class="stat-box"><div class="stat-box__label">Distances</div><div class="stat-box__value">${a.completedCount}/${ds.length}</div></div>
     </div>`;
-  if(rowed.length)h+=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Distance</th><th>Time</th><th>Pos</th><th>Points</th></tr></thead><tbody>${rowed.map(d=>{const dr=a.distRanks[d.key];return`<tr class="${podCls(dr)}"><td>${esc(d.label)}</td><td class="mono">${fmtTime(a.seconds[d.key])}</td><td>${dr?`${dr} ${medal(dr)}`:"—"}</td><td class="mono">${fmtPts(a.points[d.key])}</td></tr>`}).join("")}</tbody></table></div>`;
+  if(rowed.length)h+=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Distance</th><th>Time</th><th>Pos</th><th>Points</th><th>PB</th></tr></thead><tbody>${rowed.map(d=>{const dr=a.distRanks[d.key];const badge=recordBadge(records[d.key]);const pb=pbs[d.key]?fmtTime(parseTime(pbs[d.key])):"";return`<tr class="${podCls(dr)}"><td>${esc(d.label)}</td><td class="mono">${fmtTime(a.seconds[d.key])} ${badge}</td><td>${dr?`${dr} ${medal(dr)}`:"—"}</td><td class="mono">${fmtPts(a.points[d.key])}</td><td class="mono" style="color:var(--text-dim)">${pb}</td></tr>`}).join("")}</tbody></table></div>`;
   h+=`</div>`;el.overlay.innerHTML=h;el.overlay.hidden=false;
   document.getElementById("closePopup")?.addEventListener("click",()=>{el.overlay.hidden=true});
 }
@@ -401,31 +455,43 @@ function openPopup(name){
 // ── POPUP: Pair comparison ──────────────────────────────
 function openPairPopup(pairNum,distKey){
   if(!standings)return;
-  const sl=startListCache[state.gender][distKey]??[];
-  const pair=sl.filter(s=>(s.pairNumber||s.startNumber)===parseInt(pairNum));
-  if(pair.length<2)return;
+  const g=state.gender;
+  const sl=startListCache[g][distKey]??[];
+  const pair=sl.filter(s=>s.pairNumber===parseInt(pairNum));
+  if(pair.length<1)return;
   const ds=getDists(),dist=ds.find(d=>d.key===distKey);if(!dist)return;
-  const rA=standings.all.find(a=>a.name===pair[0].name),rB=standings.all.find(a=>a.name===pair[1].name);
-  if(!rA||!rB)return;
+  const rA=standings.all.find(a=>a.name===pair[0].name);
+  const rB=pair.length>1?standings.all.find(a=>a.name===pair[1].name):null;
+  if(!rA)return;
+
+  // Solo pair
+  if(!rB){openPopup(rA.name);return}
+
   const nameA=shortName(rA.name),nameB=shortName(rB.name);
   const pA=rA.currentPoints,pB=rB.currentPoints;
   const ptsDiff=Number.isFinite(pA)&&Number.isFinite(pB)?pA-pB:null;
   const ptsDiffStr=Number.isFinite(ptsDiff)?`${Math.abs(ptsDiff)<0.001?"Even":ptsDiff<0?`${nameA} +${fmtPts(Math.abs(ptsDiff))}`:`${nameB} +${fmtPts(ptsDiff)}`}`:"—";
-  // Time equivalent of point difference on this distance
   const timeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
   const timeDiffStr=Number.isFinite(timeDiff)?fmtDelta(timeDiff):"—";
+
+  // PB per skater for this distance
+  const pbA=pair[0].pb?fmtTime(parseTime(pair[0].pb)):"";
+  const pbB=pair[1].pb?fmtTime(parseTime(pair[1].pb)):"";
 
   const rows=ds.map(d=>{
     const sA=rA.seconds[d.key],sB=rB.seconds[d.key];
     const tA=Number.isFinite(sA)?fmtTime(sA):"—",tB=Number.isFinite(sB)?fmtTime(sB):"—";
+    // Record badges
+    const recA=(dataCache[g][d.key]??[]).find(r=>r.name===rA.name)?.record;
+    const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
     let diff="";
     if(Number.isFinite(sA)&&Number.isFinite(sB)){const dd=sA-sB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
-    return`<tr><td class="mono" style="text-align:right">${tA}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB}</td><td style="text-align:center">${diff}</td></tr>`;
+    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}</td><td style="text-align:center">${diff}</td></tr>`;
   }).join("");
 
-  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Pair ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:12px;color:var(--text-dim)">Head to Head</div></div><button class="close-btn" id="closePopup">✕</button></div>
+  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:12px;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="table-wrap" style="margin-bottom:14px"><table class="tbl">
-      <thead><tr><th style="text-align:right">${esc(rA.name)} ${flag(rA.country)}<br><span style="font-weight:400;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)} pts</span></th><th style="text-align:center">Distance</th><th>${esc(rB.name)} ${flag(rB.country)}<br><span style="font-weight:400;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)} pts</span></th><th style="text-align:center">Δ</th></tr></thead>
+      <thead><tr><th style="text-align:right">${laneDot(pair[0].startLane)} ${esc(rA.name)}<br><span style="font-weight:400;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · PB ${pbA}`:""}</span></th><th style="text-align:center">Distance</th><th>${laneDot(pair[1].startLane)} ${esc(rB.name)}<br><span style="font-weight:400;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · PB ${pbB}`:""}</span></th><th style="text-align:center">Δ</th></tr></thead>
       <tbody>${rows}
         <tr style="border-top:2px solid var(--border);font-weight:700"><td class="mono" style="text-align:right">${fmtPts(pA)}</td><td style="text-align:center;color:var(--text-dim);font-size:11px">Points</td><td class="mono">${fmtPts(pB)}</td><td style="text-align:center;font-size:11px">${ptsDiffStr}</td></tr>
       </tbody>

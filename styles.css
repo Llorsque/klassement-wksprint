@@ -63,15 +63,17 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 /* ── Overview 4-tile grid ────────────────────────────── */
 .overview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
 .overview-header h2{font-size:16px;font-weight:800}
-.overview-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;min-height:calc(100vh - var(--topbar-h) - 80px)}
-.overview-tile{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.overview-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;height:calc(100vh - var(--topbar-h) - 70px)}
+.overview-tile{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;min-height:0;max-height:100%}
 .tile-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);flex-shrink:0}
 .tile-header__title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--isu-blue)}
 .tile-header__badge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
-.tile-body{flex:1;overflow-y:auto;padding:0}
+.tile-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .tile-body::-webkit-scrollbar{width:4px}
 .tile-body::-webkit-scrollbar-track{background:transparent}
 .tile-body::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+.tile-body .tbl{table-layout:auto;width:100%}
+.tile-body .tbl td,.tile-body .tbl th{overflow:hidden;text-overflow:ellipsis}
 
 /* ── Tables ──────────────────────────────────────────── */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface-1)}
@@ -95,6 +97,16 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .pair-link:hover{color:var(--isu-blue)}
 .target-time{color:var(--orange);font-family:var(--font-mono);font-size:11px}
 .needed-time{color:var(--green);font-family:var(--font-mono);font-size:11px}
+
+/* ── Lane dots ───────────────────────────────────────── */
+.lane-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle}
+.lane-dot--inner{background:#fff;border:1px solid #999}
+.lane-dot--outer{background:#e53e3e;border:1px solid #c53030}
+
+/* ── Record badges ───────────────────────────────────── */
+.rec-badge{display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;vertical-align:middle;margin-left:4px;letter-spacing:.03em}
+.rec-badge--tr{background:#34d399;color:#064e3b}
+.rec-badge--pb{background:#ef4444;color:#fff}
 
 /* ── Buttons ─────────────────────────────────────────── */
 .btn{padding:6px 14px;border:none;border-radius:var(--radius);font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
@@ -131,8 +143,8 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
   .sidebar{display:none}
   .menu-btn{display:block}
   .main{padding:10px}
-  .overview-grid{grid-template-columns:1fr;grid-template-rows:auto}
-  .overview-tile{min-height:260px}
+  .overview-grid{grid-template-columns:1fr;grid-template-rows:repeat(4,minmax(220px,1fr));height:auto;max-height:none}
+  .overview-tile{min-height:220px;max-height:320px}
 }
 @media(max-width:600px){
   .topbar{padding:0 8px}
