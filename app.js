@@ -39,10 +39,30 @@ function laneDot(lane){return lane==="O"||lane==="Outer"?'<span class="lane-dot 
 function recordBadge(rec){if(!rec)return"";if(rec==="TR"||rec==="WR")return`<span class="rec-badge rec-badge--tr">${esc(rec)}</span>`;if(rec==="PB")return'<span class="rec-badge rec-badge--pb">PB</span>';return""}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
+// ── PB CACHE ─────────────────────────────────────────────
+function storePB(g,distKey,name,pbStr){
+  if(!pbStr||!name)return;
+  const t=pbStr.replace(",",".");
+  if(!parseTime(t))return; // invalid time
+  if(!pbCache[g][distKey])pbCache[g][distKey]={};
+  pbCache[g][distKey][name]=t;
+}
+function getPB(name,distKey){
+  const g=state.gender;
+  const t=pbCache[g]?.[distKey]?.[name];
+  if(!t)return"";
+  const sec=parseTime(t);
+  return sec?fmtTime(sec):"";
+}
+function getPBraw(g,name,distKey){
+  return pbCache[g]?.[distKey]?.[name]||"";
+}
+
 // ── STATE ───────────────────────────────────────────────
 const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all",tile3Mode:"startlist"};
 const dataCache={v:{},m:{}};
 const startListCache={v:{},m:{}};
+const pbCache={v:{},m:{}}; // {gender: {distKey: {normalizedName: timeString}}}
 const frozenStandings={v:null,m:null};
 const inactive={v:new Set(),m:new Set()};
 function loadInactive(){try{const d=JSON.parse(localStorage.getItem("wk_sprint_inactive")??"{}");if(d.v)inactive.v=new Set(d.v);if(d.m)inactive.m=new Set(d.m)}catch(_){}}
@@ -100,17 +120,22 @@ function cleanJinaName(raw){
   return s;
 }
 
-function parseAPIResults(raw){
-  if(!raw||raw._text)return parseTextResults(raw?._text);
+function parseAPIResults(raw,g,distKey){
+  if(!raw||raw._text)return parseTextResults(raw?._text,g,distKey);
   if(!Array.isArray(raw))return[];
+  if(raw.length>0)console.log("[WK] Results API sample:",JSON.stringify(raw[0]).substring(0,600));
   return raw.filter(r=>r.time&&r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
-    // Detect record: API may use records array, isTrackRecord, or flags
+    const name=`${sk.firstName} ${sk.lastName}`;
+    // Detect record
     let rec="";
     if(r.records){if(r.records.includes("TR")||r.records.includes("track"))rec="TR";else if(r.records.includes("PB")||r.records.includes("personal"))rec="PB"}
     if(!rec&&r.isTrackRecord)rec="TR";
     if(!rec&&r.isPersonalBest)rec="PB";
-    return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",rank:r.rank,
+    // Extract PB from results (ISU API may include it)
+    const pb=findPB(r,0)||findPB(r.competitor,0)||findPB(sk,0)||"";
+    if(pb&&g&&distKey)storePB(g,distKey,name,pb);
+    return{name,country:sk.country||"",rank:r.rank,
       no:r.competitor.number||r.startNumber||0,
       time:r.time,seconds:trunc2(parseTime(r.time)),timeBehind:r.timeBehind||"",
       startLane:r.startLane||r.competitor?.startLane||"",record:rec,
@@ -118,17 +143,47 @@ function parseAPIResults(raw){
   }).filter(r=>r.seconds!=null&&r.seconds>0);
 }
 
+/** Deep-search object for PB time */
+function findPB(obj,depth){
+  if(!obj||depth>4)return"";
+  if(typeof obj==="string"&&/^\d{1,2}:?\d{2}[\.,]\d{2,3}$/.test(obj))return obj;
+  if(Array.isArray(obj)){for(const v of obj){const r=findPB(v,depth+1);if(r)return r}return""}
+  if(typeof obj==="object"){
+    // Priority keys first
+    for(const key of["personalBest","pb","PB","personal_best","seasonBest","season_best","SB","bestTime","best_time","bestResult","personalRecord","pr","bestLapTime"]){
+      const v=obj[key];
+      if(v){
+        if(typeof v==="string"&&/\d/.test(v))return v;
+        if(typeof v==="number"&&v>10&&v<600){const m=Math.floor(v/60);const s=v-m*60;return m>0?(m+":"+s.toFixed(2).padStart(5,"0")):s.toFixed(2)}
+        if(typeof v==="object"){
+          for(const sub of["time","result","value","display","formatted"]){if(v[sub])return String(v[sub])}
+          const r=findPB(v,depth+1);if(r)return r;
+        }
+      }
+    }
+    // Also search nested objects
+    for(const key of["competitor","skater","athlete","person","entry"]){
+      if(obj[key]){const r=findPB(obj[key],depth+1);if(r)return r}
+    }
+  }
+  return"";
+}
+
 function parseAPIStartList(raw){
   if(!raw||raw._text)return parseTextStartList(raw?._text);
   if(!Array.isArray(raw))return[];
+  if(raw.length>0)console.log("[WK] SL API keys:",Object.keys(raw[0]),JSON.stringify(raw[0]).substring(0,500));
   const items=raw.filter(r=>r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
-    const pb=r.personalBest||r.pb||r.seasonBest||"";
+    let pb=findPB(r,0)||findPB(r.competitor,0)||findPB(sk,0)||"";
+    if(!pb){for(const[k,v]of Object.entries(r)){if(typeof v==="string"&&/^\d{1,2}:?\d{2}[\.,]\d{2}$/.test(v)&&!["time","result"].includes(k)){pb=v;break}}}
+    if(pb)pb=pb.replace(",",".");
     return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",
       no:r.competitor.number||r.startNumber||0,
       startLane:r.startLane||r.lane||"",
-      _rawPair:r.pairNumber??null,pairNumber:0,pb:typeof pb==="string"?pb:""};
+      _rawPair:r.pairNumber??null,pairNumber:0,pb};
   });
+  if(items.length>0)console.log("[WK] SL PB sample:",items[0].name,"pb=",items[0].pb||"(none)");
   return assignPairs(items);
 }
 
@@ -201,7 +256,7 @@ function assignPairs(items){
 
 // Text fallback parsers (from Jina rendered HTML)
 function norm(n){return String(n??"").trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"").replace(/[\u2018\u2019`\u00B4\u2032\u02BC\u02BB']/g,"'").replace(/\s+/g," ")}
-function parseTextResults(text){
+function parseTextResults(text,g,distKey){
   if(!text)return[];
   const results=[],lines=text.split(/\n/);
   const timeRe=/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/;
@@ -238,6 +293,7 @@ function parseTextResults(text){
 function parseTextStartList(text){
   if(!text)return[];
   const list=[],lines=text.split(/\n/);
+  if(lines.length>5)console.log("[WK] SL text sample lines:",lines.slice(3,8));
   for(const line of lines){
     const clean=cleanJinaName(line);
     if(!clean||clean.length<3)continue;
@@ -259,9 +315,13 @@ function parseTextStartList(text){
     // Country
     const ccm=clean.match(/\b([A-Z]{3})\b/g);
     let cc=ccm?ccm.find(c=>!["PB","NO","TR","WR","NR","SR","DNS","DNF","DSQ"].includes(c))||"":"";
-    // PB
-    const pbMatch=clean.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
-    const pb=pbMatch?pbMatch[1].replace(",","."):"";
+    // PB: search both cleaned AND original line for a time pattern (PB is last time on line)
+    let pb="";
+    // From original line (preserves numbers that cleanJinaName might alter)
+    const origTimes=[...line.matchAll(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/g)].map(m=>m[1]);
+    if(origTimes.length>0)pb=origTimes[origTimes.length-1].replace(",",".");
+    // Fallback: from cleaned line
+    if(!pb){const pbM=clean.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);if(pbM)pb=pbM[1].replace(",",".")}
     const noMatch=clean.match(/\b(\d{2,3})\b/);
     const no=noMatch?parseInt(noMatch[1]):0;
     list.push({name,country:cc,no,startLane:lane,_rawPair:pairNum,pairNumber:0,pb});
@@ -275,16 +335,27 @@ async function fetchGender(g,onlyDist){
   for(const d of toFetch){
     // Fetch results
     const raw=await fetchJSON(d.compId,"results");
-    const results=parseAPIResults(raw);
+    const results=parseAPIResults(raw,g,d.key);
     if(results.length>0)dataCache[g][d.key]=results;
-    // Fetch start-list (only on full fetch, not single-distance polls)
-    if(!onlyDist){
+    // Always fetch start-list (needed for PB data & pair info)
+    // Skip only if we already have start-list AND it's a single-distance poll
+    if(!onlyDist||!startListCache[g][d.key]?.length){
       const slRaw=await fetchJSON(d.compId,"start-list");
       const sl=parseAPIStartList(slRaw);
-      if(sl.length>0)startListCache[g][d.key]=sl;
+      if(sl.length>0){
+        startListCache[g][d.key]=sl;
+        // Store PBs from start-list into pbCache
+        for(const s of sl){
+          if(s.pb)storePB(g,d.key,s.name,s.pb);
+        }
+        console.log(`[WK] ${g}/${d.key} start-list: ${sl.length} skaters, PBs found: ${sl.filter(s=>s.pb).length}`);
+      }
     }
     if(!onlyDist)await sleep(300);
   }
+  // Log PB cache status
+  const pbCount=Object.values(pbCache[g]).reduce((sum,d)=>sum+Object.keys(d).length,0);
+  console.log(`[WK] PB cache for ${g}: ${pbCount} entries across ${Object.keys(pbCache[g]).length} distances`);
   lastFetch[g]=new Date();
 }
 
@@ -418,9 +489,11 @@ function fillTile1(dist){
     const rk=i+1;const diff=r.seconds-fastest;
     const dStr=diff===0?"":`<span class="delta">${fmtDelta(diff)}</span>`;
     const badge=recordBadge(r.record);
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong></td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td>${dStr}</td></tr>`;
+    const pb=getPB(r.name,dist.key);
+    const pbStr=pb?`<span style="color:var(--orange);font-size:10px">${pb}</span>`:"";
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong></td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td>${pbStr}</td><td>${dStr}</td></tr>`;
   }).join("");
-  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Time</th><th>+</th></tr></thead><tbody>${rows}</tbody></table>`;
+  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Time</th><th style="color:var(--orange)">PB</th><th>+</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function fillTile2(){
@@ -452,11 +525,13 @@ function fillTile3(dist){
       const ath=standings?.all?.find(a=>a.name===s.name);
       const nt=ath?neededTime(ath,dist.key,lPts):null;
       const ntStr=Number.isFinite(nt)&&nt>0?`<span class="target-time">${fmtTime(nt)}</span>`:Number.isFinite(nt)?`<span class="needed-time">✓</span>`:"";
+      const pb=getPB(s.name,dist.key);
+      const pbStr=pb?`<span style="color:var(--orange);font-size:10px">${pb}</span>`:"";
       const pairCell=si===0?`<span class="pair-link" data-pair="${pn}" data-dist="${dist.key}">${pn}</span>`:"";
-      rows+=`<tr><td>${pairCell}</td><td>${laneDot(s.startLane)}</td><td><span class="athlete" data-name="${esc(s.name)}">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></td><td>${ntStr}</td></tr>`;
+      rows+=`<tr><td>${pairCell}</td><td>${laneDot(s.startLane)}</td><td><span class="athlete" data-name="${esc(s.name)}">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></td><td>${pbStr}</td><td>${ntStr}</td></tr>`;
     }
   }
-  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Rit</th><th></th><th>Name</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
+  body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Rit</th><th></th><th>Name</th><th style="color:var(--orange)">PB</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 /** Find the first pair on this distance where not all riders have results yet */
@@ -530,9 +605,8 @@ function fillTile3NextPair(dist){
   // mutualTimeDiff < 0 means A has fewer points (faster) = A leads
 
   // PB for this distance
-  const pbA=sA.pb?fmtTime(parseTime(sA.pb)):"";
-  const pbB=sB.pb?fmtTime(parseTime(sB.pb)):"";
-
+  const pbA=getPB(rA.name,dist.key);
+  const pbB=getPB(rB.name,dist.key);
   // Rows per distance
   const rows=ds.map(d=>{
     const secA=rA.seconds[d.key],secB=rB.seconds[d.key];
@@ -621,7 +695,9 @@ function renderDistance(dKey){
     const rk=i+1;const diff=Number.isFinite(fastest)?r.seconds-fastest:null;
     const dStr=diff===0?"":Number.isFinite(diff)?`<span class="delta">${fmtDelta(diff)}</span>`:"";
     const badge=recordBadge(r.record);
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono">${fmtPts(trunc3(r.seconds/dist.divisor))}</td><td>${dStr}</td></tr>`;
+    const pb=getPB(r.name,dist.key);
+    const pbStr=pb?`<span style="color:var(--orange)">${pb}</span>`:"";
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono" style="color:var(--orange)">${pbStr}</td><td class="mono">${fmtPts(trunc3(r.seconds/dist.divisor))}</td><td>${dStr}</td></tr>`;
   }).join("");
 
   // Sidebar standings
@@ -639,7 +715,7 @@ function renderDistance(dKey){
   el.contentArea.innerHTML=`
     <h2 style="font-size:17px;font-weight:800;margin-bottom:12px">${esc(dist.label)} — ${state.gender==="v"?"Women":"Men"}</h2>
     <div style="display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start">
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>Name</th><th>Time</th><th>Points</th><th>Gap</th></tr></thead><tbody>${mainR}</tbody></table></div>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>Name</th><th>Time</th><th style="color:var(--orange)">PB</th><th>Points</th><th>Gap</th></tr></thead><tbody>${mainR}</tbody></table></div>
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--isu-blue);margin-bottom:4px">Live Standings <span style="color:var(--text-dim);font-weight:400">(${cc}/${ds.length})</span></div>
         ${nextDist?`<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Target on ${esc(nextDist.label)} for P1</div>`:""}
@@ -701,19 +777,16 @@ function renderDeelnemers(){
 function openPopup(name){
   if(!standings)return;const a=standings.all.find(x=>x.name===name);if(!a)return;const ds=getDists();const g=state.gender;
   const rowed=ds.filter(d=>a.times[d.key]);
-  // Collect records and PB per distance from ALL start-lists
-  const records={},pbs={};
+  // Collect records per distance
+  const records={};
   for(const d of ds){
     const res=(dataCache[g][d.key]??[]).find(r=>r.name===name);
     if(res?.record)records[d.key]=res.record;
-    // Search all start-lists for PB on this distance
-    const sl=(startListCache[g][d.key]??[]).find(s=>s.name===name);
-    if(sl?.pb)pbs[d.key]=sl.pb;
   }
-  // Also show PB for distances not yet raced
+  // All distances with PB from central cache
   const allDists=ds.map(d=>{
     const hasResult=Number.isFinite(a.seconds[d.key]);
-    const pb=pbs[d.key]?fmtTime(parseTime(pbs[d.key])):"";
+    const pb=getPB(name,d.key);
     return{d,hasResult,pb};
   });
 
@@ -760,29 +833,22 @@ function openPairPopup(pairNum,distKey){
   const timeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
   const timeDiffStr=Number.isFinite(timeDiff)?fmtDelta(timeDiff):"—";
 
-  // PB per skater per distance (from all start-lists)
-  const pbsA={},pbsB={};
-  for(const d of ds){
-    const slD=startListCache[g][d.key]??[];
-    const sAd=slD.find(s=>s.name===rA.name);
-    const sBd=slD.find(s=>s.name===rB.name);
-    if(sAd?.pb)pbsA[d.key]=sAd.pb;
-    if(sBd?.pb)pbsB[d.key]=sBd.pb;
-  }
-  // PB for this specific distance (for header)
-  const pbA=pbsA[distKey]?fmtTime(parseTime(pbsA[distKey])):"";
-  const pbB=pbsB[distKey]?fmtTime(parseTime(pbsB[distKey])):"";
+  // PB from central cache
+  const pbA=getPB(rA.name,distKey);
+  const pbB=getPB(rB.name,distKey);
 
   const rows=ds.map(d=>{
     const sA=rA.seconds[d.key],sB=rB.seconds[d.key];
     const tA=Number.isFinite(sA)?fmtTime(sA):"—",tB=Number.isFinite(sB)?fmtTime(sB):"—";
     const recA=(dataCache[g][d.key]??[]).find(r=>r.name===rA.name)?.record;
     const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
-    const pA_pb=pbsA[d.key]?`<div style="color:var(--orange);font-size:10px">PB ${fmtTime(parseTime(pbsA[d.key]))}</div>`:"";
-    const pB_pb=pbsB[d.key]?`<div style="color:var(--orange);font-size:10px">PB ${fmtTime(parseTime(pbsB[d.key]))}</div>`:"";
+    const pA_pb=getPB(rA.name,d.key);
+    const pB_pb=getPB(rB.name,d.key);
+    const pA_pbH=pA_pb?`<div style="color:var(--orange);font-size:10px">PB ${pA_pb}</div>`:"";
+    const pB_pbH=pB_pb?`<div style="color:var(--orange);font-size:10px">PB ${pB_pb}</div>`:"";
     let diff="";
     if(Number.isFinite(sA)&&Number.isFinite(sB)){const dd=sA-sB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
-    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}${pA_pb}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}${pB_pb}</td><td style="text-align:center">${diff}</td></tr>`;
+    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}${pA_pbH}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}${pB_pbH}</td><td style="text-align:center">${diff}</td></tr>`;
   }).join("");
 
   let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:13px;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
