@@ -44,6 +44,10 @@ const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all"};
 const dataCache={v:{},m:{}};
 const startListCache={v:{},m:{}};
 const frozenStandings={v:null,m:null};
+const inactive={v:new Set(),m:new Set()};
+function loadInactive(){try{const d=JSON.parse(localStorage.getItem("wk_sprint_inactive")??"{}");if(d.v)inactive.v=new Set(d.v);if(d.m)inactive.m=new Set(d.m)}catch(_){}}
+function saveInactive(){try{localStorage.setItem("wk_sprint_inactive",JSON.stringify({v:[...inactive.v],m:[...inactive.m]}))}catch(_){}}
+function isActive(name){return!inactive[state.gender].has(name)}
 let standings=null,dataSource="waiting";
 const lastFetch={v:null,m:null};
 
@@ -94,19 +98,26 @@ function parseAPIResults(raw){
 function parseAPIStartList(raw){
   if(!raw||raw._text)return parseTextStartList(raw?._text);
   if(!Array.isArray(raw))return[];
-  // API start-list: items may have pairNumber or need to be inferred from startNumber pairs
   const items=raw.filter(r=>r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
     const pb=r.personalBest||r.pb||r.seasonBest||"";
     return{name:`${sk.firstName} ${sk.lastName}`,country:sk.country||"",
       no:r.competitor.number||r.startNumber||0,
       startLane:r.startLane||r.lane||"",
-      pairNumber:r.pairNumber||0,pb:typeof pb==="string"?pb:""};
+      pairNumber:r.pairNumber??null,pb:typeof pb==="string"?pb:""};
   });
-  // If pairNumber is 0 for all, infer pairs from order (2 per pair)
-  if(items.length>0&&items.every(i=>i.pairNumber===0)){
+  // Fix pair numbers: if null/0, inherit from previous item (same pair)
+  // If a value is present, it's a new pair
+  let currentPair=1;
+  for(let i=0;i<items.length;i++){
+    if(items[i].pairNumber!=null&&items[i].pairNumber>0){
+      currentPair=items[i].pairNumber;
+    }
+    items[i].pairNumber=currentPair;
+  }
+  // If all were null, infer pairs (2 per pair, first is solo if odd)
+  if(items.length>0&&items.every((it,i)=>it.pairNumber===1)){
     let pn=1;for(let i=0;i<items.length;i++){items[i].pairNumber=pn;if(i%2===1)pn++;}
-    // Handle odd number (solo last pair)
     if(items.length%2===1)items[items.length-1].pairNumber=Math.ceil(items.length/2);
   }
   return items;
@@ -148,28 +159,32 @@ function parseTextResults(text){
 function parseTextStartList(text){
   if(!text)return[];
   const list=[],lines=text.split(/\n/);
-  let pairNum=0;
+  let currentPair=0;
   for(const line of lines){
-    // Detect pair number: "1" at start of row, or "Pair: 1"
-    const pm=line.match(/^[\s]*(\d{1,2})\s+[OI]\s/)||line.match(/(?:pair|rit)[:\s]*(\d+)/i);
-    if(pm)pairNum=parseInt(pm[1]);
+    // A line starting with a number followed by lane letter = new pair
+    const pairMatch=line.match(/^\s*(\d{1,2})\s+[OI]\s/);
+    if(pairMatch)currentPair=parseInt(pairMatch[1]);
+    // Also match "Pair: X" or "Rit X"
+    const pm=line.match(/(?:pair|rit)[:\s]*(\d+)/i);
+    if(pm)currentPair=parseInt(pm[1]);
     // Detect lane
     const laneMatch=line.match(/\b([OI])\b/);
     const lane=laneMatch?laneMatch[1]:"";
     // Detect NO
     const noMatch=line.match(/\b(\d{2,3})\b/);
-    // Detect name (First Last pattern)
+    // Detect name
     const nm=line.match(/([A-Z][a-zA-Z\u00C0-\u017F'-]+(?:\s+[A-Za-z\u00C0-\u017F'-]+)+)/);
     if(!nm)continue;
     const name=nm[1].trim();
     if(name.length<4||/^(Pair|Lane|Name|Time|Behind|Rank)/i.test(name))continue;
     const ccm=line.match(/\b([A-Z]{3})\b/g);
     const cc=ccm?ccm.find(c=>c!=="PB"&&c!=="NO"&&c!=="TR"&&c!=="WR")||"":"";
-    // PB time
     const pbMatch=line.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);
     const pb=pbMatch?pbMatch[1].replace(",","."):"";
     const no=noMatch?parseInt(noMatch[1]):0;
-    list.push({name,country:cc,no,startLane:lane,pairNumber:pairNum||Math.ceil((list.length+1)/2),pb});
+    // If no pair number found on this line, use current (same pair)
+    if(!currentPair)currentPair=Math.ceil((list.length+1)/2);
+    list.push({name,country:cc,no,startLane:lane,pairNumber:currentPair,pb});
   }
   return list;
 }
@@ -208,16 +223,17 @@ function computeStandings(){
   const ds=getDists(),g=state.gender;
   const parts=buildParticipants(g);
   const athletes=parts.map(p=>{
-    const a={name:p.name,country:p.country,times:{},seconds:{},points:{},distRanks:{}};
+    const a={name:p.name,country:p.country,active:isActive(p.name),times:{},seconds:{},points:{},distRanks:{}};
     for(const d of ds){const r=(dataCache[g][d.key]??[]).find(x=>x.name===p.name);if(r){a.times[d.key]=r.time;a.seconds[d.key]=r.seconds;a.points[d.key]=trunc3(r.seconds/d.divisor)}}
     return a;
   });
   for(const d of ds){const s=athletes.filter(a=>Number.isFinite(a.seconds[d.key])).sort((x,y)=>x.seconds[d.key]-y.seconds[d.key]);s.forEach((a,i)=>a.distRanks[d.key]=i+1)}
   for(const a of athletes){let sum=0,cnt=0;for(const d of ds){const p=a.points[d.key];if(Number.isFinite(p)){sum+=p;cnt++}}a.completedCount=cnt;const clean=Math.round(sum*1e6)/1e6;a.totalPoints=cnt===ds.length?clean:null;a.partialPoints=cnt>0?clean:null;a.currentPoints=a.totalPoints??a.partialPoints}
-  const ranked=athletes.filter(a=>a.completedCount>0).sort((a,b)=>{if(b.completedCount!==a.completedCount)return b.completedCount-a.completedCount;return(a.currentPoints??999)-(b.currentPoints??999)});
+  const ranked=athletes.filter(a=>a.active&&a.completedCount>0).sort((a,b)=>{if(b.completedCount!==a.completedCount)return b.completedCount-a.completedCount;return(a.currentPoints??999)-(b.currentPoints??999)});
   ranked.forEach((a,i)=>a.rank=i+1);
   const leader=ranked[0],lPts=leader?.currentPoints??null;
   for(const a of ranked)a.delta=Number.isFinite(lPts)&&Number.isFinite(a.currentPoints)?a.currentPoints-lPts:null;
+  for(const a of athletes)if(!a.active)a.rank=null;
   standings={all:athletes,ranked,leader};
   dataSource=athletes.some(a=>a.completedCount>0)?"live":"waiting";
 }
@@ -250,12 +266,14 @@ function render(){
   for(const d of ds)views.push({key:`dist_${d.key}`,icon:"⏱",label:d.label});
   views.push({key:"_sep2",sep:true});
   views.push({key:"klassement",icon:"🏆",label:"Standings"});
+  views.push({key:"deelnemers",icon:"👥",label:"Deelnemers"});
   const navHtml=views.map(v=>v.sep?'<div class="nav-sep"></div>':`<button class="nav-btn ${state.view===v.key?'active':''}" data-view="${v.key}"><span class="nav-btn__icon">${v.icon}</span>${esc(v.label)}</button>`).join("");
   el.navButtons.innerHTML=navHtml;el.mobileNav.innerHTML=navHtml;
   el.genderTabs.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.gender===state.gender));
   if(state.view==="overview")return renderOverview();
   if(state.view.startsWith("dist_")){return renderDistance(state.view.replace("dist_",""))}
   if(state.view==="klassement")return renderKlassement();
+  if(state.view==="deelnemers")return renderDeelnemers();
   renderOverview();
 }
 
@@ -429,6 +447,37 @@ function renderKlassement(){
     <div class="info-box"><strong>Sorting:</strong> most distances completed → lowest points. Points = time(s) ÷ distance factor (500m=1, 1000m=2), truncated to 3 decimals.</div>`;
 }
 
+// ── DEELNEMERS ──────────────────────────────────────────
+function renderDeelnemers(){
+  const g=state.gender;
+  const parts=buildParticipants(g);
+  if(!parts.length){el.contentArea.innerHTML=`<h2 style="font-size:17px;font-weight:800;margin-bottom:12px">Deelnemers — ${g==="v"?"Women":"Men"}</h2><div class="info-box">No participants loaded yet. Data will appear once results or start lists are fetched.</div>`;return}
+  const ac=parts.filter(p=>isActive(p.name)).length;
+  const rows=parts.map(p=>{
+    const act=isActive(p.name);
+    const a=standings?.all?.find(x=>x.name===p.name);
+    const cc=a?.completedCount??0;
+    const pts=a?.currentPoints;
+    return`<tr${!act?' style="opacity:.4"':""}>
+      <td><span class="athlete" data-name="${esc(p.name)}">${esc(p.name)}</span> <span class="country">${esc(p.country)}</span></td>
+      <td class="mono">${cc>0?fmtPts(pts):"—"}</td>
+      <td>${a?.rank??"—"}</td>
+      <td><button class="btn ${act?"btn--ghost":"btn--inactive"}" data-toggle="${esc(p.name)}" style="font-size:11px;padding:3px 10px">${act?"Actief":"Inactief"}</button></td>
+    </tr>`;
+  }).join("");
+  el.contentArea.innerHTML=`
+    <h2 style="font-size:17px;font-weight:800;margin-bottom:2px">Deelnemers — ${g==="v"?"Women":"Men"}</h2>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">${ac}/${parts.length} actief</div>
+    <div class="table-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Points</th><th>Rank</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="info-box">Klik <strong>Actief/Inactief</strong> om rijders uit het klassement te halen (bijv. bij opgave of diskwalificatie).</div>`;
+  el.contentArea.addEventListener("click",e=>{
+    const b=e.target.closest("[data-toggle]");if(!b)return;
+    const n=b.dataset.toggle;
+    inactive[g].has(n)?inactive[g].delete(n):inactive[g].add(n);
+    saveInactive();render();
+  });
+}
+
 // ── POPUP: Athlete ──────────────────────────────────────
 function openPopup(name){
   if(!standings)return;const a=standings.all.find(x=>x.name===name);if(!a)return;const ds=getDists();const g=state.gender;
@@ -552,7 +601,7 @@ function startPoll(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{t
 // ── BOOT ────────────────────────────────────────────────
 async function boot(){
   try{
-    cacheEls();bindEvents();render();
+    cacheEls();loadInactive();bindEvents();render();
     await fetchGender(state.gender);render();
     console.log("[WK Sprint] Live ✅");startPoll();
   }catch(e){

@@ -112,6 +112,7 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .btn{padding:6px 14px;border:none;border-radius:var(--radius);font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
 .btn--isu{background:var(--isu-blue);color:#fff}.btn--isu:hover{background:#007bbd}
 .btn--ghost{background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)}
+.btn--inactive{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
 .btn--update{background:var(--isu-blue);color:#fff;font-size:11px;padding:4px 12px;border-radius:4px;animation:pulse 2s infinite}
 .sel{padding:5px 8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px;font-family:var(--font-body)}
 
