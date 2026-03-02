@@ -545,22 +545,15 @@ function fillTile3NextPair(dist){
     return`<tr${hl}><td class="mono r">${tA}${recordBadge(recA)}</td><td class="c dim">${esc(d.label)}</td><td class="mono">${tB}${recordBadge(recB)}</td><td class="c">${diff}</td></tr>`;
   }).join("");
 
-  // Format time-to-lead
-  function ttlStr(ttl,name){
-    if(!Number.isFinite(ttl))return"—";
-    if(ttl<=0)return`<span style="color:var(--green)">Is leader</span>`;
-    return`<span class="mono" style="font-size:15px;font-weight:700">${fmtTime(ttl)}</span>`;
-  }
-
-  // Format mutual advantage: negative = this rider is ahead (green with −), positive = behind (red with +)
-  function mutualStr(forA){
-    if(!Number.isFinite(mutualTimeDiff))return"—";
+  // Format mutual: returns {cls, text} for the card
+  function mutualCard(forA){
+    if(!Number.isFinite(mutualTimeDiff))return{cls:"np-card--neutral",text:"—"};
     const adv=forA?-mutualTimeDiff:mutualTimeDiff;
-    // adv < 0 means this rider has advantage (ahead), adv > 0 means behind
-    if(Math.abs(adv)<0.005)return`<span style="color:var(--text-dim)">Even</span>`;
-    if(adv<0)return`<span style="color:var(--green);font-size:14px;font-weight:700">−${fmtTime(Math.abs(adv))}</span>`;
-    return`<span style="color:var(--red);font-size:14px;font-weight:700">+${fmtTime(adv)}</span>`;
+    if(Math.abs(adv)<0.005)return{cls:"np-card--neutral",text:"Even"};
+    if(adv<0)return{cls:"np-card--green",text:`−${fmtTime(Math.abs(adv))}`};
+    return{cls:"np-card--red",text:`+${fmtTime(adv)}`};
   }
+  const mA=mutualCard(true),mB=mutualCard(false);
 
   body.innerHTML=`<div class="np-wrap">
     <div class="np-header">
@@ -577,14 +570,20 @@ function fillTile3NextPair(dist){
         <tr class="np-pts"><td class="mono r">${fmtPts(pA)}</td><td class="c dim">Pts</td><td class="mono">${fmtPts(pB)}</td><td></td></tr>
       </tbody>
     </table>
-    <div class="np-info">
-      <div class="np-info__row">
-        <div class="np-info__label">🎯 Time to lead (${esc(leaderName)})</div>
-        <div class="np-info__vals"><span class="r">${ttlStr(ttlA,nameA)}</span><span>${ttlStr(ttlB,nameB)}</span></div>
+    <div class="np-cards">
+      <div class="np-cards__section">
+        <div class="np-cards__label">🎯 Time to lead</div>
+        <div class="np-cards__pair">
+          <div class="np-card np-card--ttl"><div class="np-card__time">${Number.isFinite(ttlA)&&ttlA>0?fmtTime(ttlA):(ttlA<=0?'<span style="color:var(--green)">Leader</span>':"—")}</div></div>
+          <div class="np-card np-card--ttl"><div class="np-card__time">${Number.isFinite(ttlB)&&ttlB>0?fmtTime(ttlB):(ttlB<=0?'<span style="color:var(--green)">Leader</span>':"—")}</div></div>
+        </div>
       </div>
-      <div class="np-info__row">
-        <div class="np-info__label">⚔ Onderling op ${esc(dist.label)}</div>
-        <div class="np-info__vals"><span class="r">${mutualStr(true)}</span><span>${mutualStr(false)}</span></div>
+      <div class="np-cards__section">
+        <div class="np-cards__label">⚔ Onderling op ${esc(dist.label)}</div>
+        <div class="np-cards__pair">
+          <div class="np-card ${mA.cls}"><div class="np-card__time">${mA.text}</div></div>
+          <div class="np-card ${mB.cls}"><div class="np-card__time">${mB.text}</div></div>
+        </div>
       </div>
     </div>
   </div>`;

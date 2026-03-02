@@ -91,6 +91,18 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .np-info__vals{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .np-info__vals span{font-family:var(--font-mono)}
 .np-info__vals .r{text-align:right}
+
+/* ── Next Pair bottom cards ──────────────────────────── */
+.np-cards{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px solid var(--border)}
+.np-cards__section{}
+.np-cards__label{font-size:10px;font-weight:700;color:var(--isu-blue);margin-bottom:4px;letter-spacing:.03em}
+.np-cards__pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.np-card{border-radius:6px;padding:8px 12px;text-align:center;font-family:var(--font-mono)}
+.np-card__time{font-size:16px;font-weight:800;letter-spacing:-.02em}
+.np-card--ttl{background:var(--surface-2);border:1px solid var(--border);color:var(--text)}
+.np-card--green{background:#059669;color:#fff}
+.np-card--red{background:#dc2626;color:#fff}
+.np-card--neutral{background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim)}
 .tile-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .tile-body::-webkit-scrollbar{width:4px}
 .tile-body::-webkit-scrollbar-track{background:transparent}
