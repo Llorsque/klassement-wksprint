@@ -36,7 +36,7 @@ function podCls(r){return r>=1&&r<=3?` row--${["","gold","silver","bronze"][r]}`
 function shortName(name){const p=(name??"").split(" ");return p.length>1?p[p.length-1]:name}
 function flag(cc){if(!cc)return"";try{return String.fromCodePoint(...[...cc.toUpperCase()].map(c=>0x1F1E6+c.charCodeAt(0)-65))}catch(_){return cc}}
 function laneDot(lane){return lane==="O"||lane==="Outer"?'<span class="lane-dot lane-dot--outer" title="Outer"></span>':lane==="I"||lane==="Inner"?'<span class="lane-dot lane-dot--inner" title="Inner"></span>':""}
-function recordBadge(rec){if(!rec)return"";if(rec==="TR"||rec==="WR")return`<span class="rec-badge rec-badge--tr">${esc(rec)}</span>`;if(rec==="PB")return'<span class="rec-badge rec-badge--pb">PB</span>';return""}
+function recordBadge(rec){if(!rec)return"";if(rec==="TR")return'<span class="rec-badge rec-badge--tr">TR</span>';if(rec==="PB")return'<span class="rec-badge rec-badge--pb">PB</span>';return""}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
 // ── PB CACHE ─────────────────────────────────────────────
@@ -127,14 +127,14 @@ function parseAPIResults(raw,g,distKey){
   return raw.filter(r=>r.time&&r.competitor?.skater).map(r=>{
     const sk=r.competitor.skater;
     const name=`${sk.firstName} ${sk.lastName}`;
-    // Detect record
+    // Record flags: ONLY from explicit API fields, never inferred
     let rec="";
-    if(r.records){if(r.records.includes("TR")||r.records.includes("track"))rec="TR";else if(r.records.includes("PB")||r.records.includes("personal"))rec="PB"}
-    if(!rec&&r.isTrackRecord)rec="TR";
-    if(!rec&&r.isPersonalBest)rec="PB";
-    // Extract PB from results (ISU API may include it)
-    const pb=findPB(r,0)||findPB(r.competitor,0)||findPB(sk,0)||"";
-    if(pb&&g&&distKey)storePB(g,distKey,name,pb);
+    if(r.records){
+      const recs=Array.isArray(r.records)?r.records:String(r.records).split(",");
+      for(const x of recs){const u=String(x).trim().toUpperCase();if(u==="TR"||u.includes("TRACK"))rec="TR";if(u==="PB"||u.includes("PERSONAL"))rec=rec||"PB"}
+    }
+    if(!rec&&r.isTrackRecord===true)rec="TR";
+    if(!rec&&r.isPersonalBest===true)rec="PB";
     return{name,country:sk.country||"",rank:r.rank,
       no:r.competitor.number||r.startNumber||0,
       time:r.time,seconds:trunc2(parseTime(r.time)),timeBehind:r.timeBehind||"",
@@ -267,8 +267,8 @@ function parseTextResults(text,g,distKey){
     const sec=parseTime(rawTime);if(!sec)continue;
     const before=line.substring(0,m.index);
     const after=line.substring(m.index+m[1].length);
-    // Detect record badges
-    let rec="";if(/\bTR\b/.test(line))rec="TR";else if(/\bWR\b/.test(line))rec="WR";else if(/\bPB\b/.test(line))rec="PB";
+    // Detect record badges ONLY after the time (not from "* TR Name" prefixes)
+    let rec="";if(/\bTR\b/.test(after))rec="TR";else if(/\bPB\b/.test(after))rec="PB";
     // Clean the whole line from Jina markdown, then extract fields
     const cleanLine=cleanJinaName(before);
     // Country code: last 3-letter uppercase word
