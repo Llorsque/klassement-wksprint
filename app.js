@@ -2,7 +2,7 @@
 // ════════════════════════════════════════════════════════
 // ISU World Sprint Championships 2026 — Heerenveen
 // ════════════════════════════════════════════════════════
-const EVENT_ID="2026_NED_0002";
+const EVENT_ID="2024_GER_0001";
 const API_BASE=`https://api.isuresults.eu/events/${EVENT_ID}/competitions`;
 const JINA="https://r.jina.ai/";
 const LIVE_BASE=`https://live.isuresults.eu/events/${EVENT_ID}/competition`;
