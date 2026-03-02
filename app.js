@@ -515,10 +515,19 @@ function fillTile3NextPair(dist){
 
   const pA=rA.currentPoints,pB=rB.currentPoints;
   const nameA=shortName(rA.name),nameB=shortName(rB.name);
+  const lPts=standings?.leader?.currentPoints;
+  const leaderName=standings?.leader?shortName(standings.leader.name):"P1";
+
+  // Time-to-lead for each rider
+  const ttlA=neededTime(rA,dist.key,lPts);
+  const ttlB=neededTime(rB,dist.key,lPts);
+
+  // Mutual difference in points → time on this distance
   const ptsDiff=Number.isFinite(pA)&&Number.isFinite(pB)?pA-pB:null;
-  const ptsDiffStr=Number.isFinite(ptsDiff)?`${Math.abs(ptsDiff)<0.001?"Even":ptsDiff<0?`${nameA} +${fmtPts(Math.abs(ptsDiff))}`:`${nameB} +${fmtPts(ptsDiff)}`}`:"—";
-  const timeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
-  const timeDiffStr=Number.isFinite(timeDiff)?fmtDelta(timeDiff):"—";
+  const mutualTimeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
+  // A has fewer pts = A is ahead: mutual shows B needs to ride X faster than A
+  // mutualTimeDiff > 0 means A has more points (slower) = B leads
+  // mutualTimeDiff < 0 means A has fewer points (faster) = A leads
 
   // PB for this distance
   const pbA=sA.pb?fmtTime(parseTime(sA.pb)):"";
@@ -527,31 +536,57 @@ function fillTile3NextPair(dist){
   // Rows per distance
   const rows=ds.map(d=>{
     const secA=rA.seconds[d.key],secB=rB.seconds[d.key];
-    const tA=Number.isFinite(secA)?fmtTime(secA):"—",tB=Number.isFinite(secB)?fmtTime(secB):"—";
+    const tA=Number.isFinite(secA)?fmtTime(secA):"",tB=Number.isFinite(secB)?fmtTime(secB):"";
     const recA=(dataCache[g][d.key]??[]).find(r=>r.name===rA.name)?.record;
     const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
     let diff="";
-    if(Number.isFinite(secA)&&Number.isFinite(secB)){const dd=secA-secB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
-    const hl=d.key===dist.key?' style="background:rgba(0,153,229,.08)"':"";
-    return`<tr${hl}><td class="mono" style="text-align:right;font-size:11px">${tA} ${recordBadge(recA)}</td><td style="text-align:center;font-size:10px;color:var(--text-dim)">${esc(d.label)}</td><td class="mono" style="font-size:11px">${tB} ${recordBadge(recB)}</td><td style="text-align:center;font-size:11px">${diff}</td></tr>`;
+    if(Number.isFinite(secA)&&Number.isFinite(secB)){const dd=secA-secB;diff=Math.abs(dd)<0.005?'—':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
+    const hl=d.key===dist.key?' style="background:rgba(0,153,229,.1)"':"";
+    return`<tr${hl}><td class="mono r">${tA}${recordBadge(recA)}</td><td class="c dim">${esc(d.label)}</td><td class="mono">${tB}${recordBadge(recB)}</td><td class="c">${diff}</td></tr>`;
   }).join("");
 
-  body.innerHTML=`<div style="padding:10px 12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</div>
-      <div style="font-size:10px;color:var(--text-dim)">${ptsDiffStr} = ${timeDiffStr} on ${esc(dist.label)}</div>
+  // Format time-to-lead
+  function ttlStr(ttl,name){
+    if(!Number.isFinite(ttl))return"—";
+    if(ttl<=0)return`<span style="color:var(--green)">Is leader</span>`;
+    return`<span class="mono" style="font-size:15px;font-weight:700">${fmtTime(ttl)}</span>`;
+  }
+
+  // Format mutual advantage: negative = this rider is ahead (green with −), positive = behind (red with +)
+  function mutualStr(forA){
+    if(!Number.isFinite(mutualTimeDiff))return"—";
+    const adv=forA?-mutualTimeDiff:mutualTimeDiff;
+    // adv < 0 means this rider has advantage (ahead), adv > 0 means behind
+    if(Math.abs(adv)<0.005)return`<span style="color:var(--text-dim)">Even</span>`;
+    if(adv<0)return`<span style="color:var(--green);font-size:14px;font-weight:700">−${fmtTime(Math.abs(adv))}</span>`;
+    return`<span style="color:var(--red);font-size:14px;font-weight:700">+${fmtTime(adv)}</span>`;
+  }
+
+  body.innerHTML=`<div class="np-wrap">
+    <div class="np-header">
+      <span style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</span>
     </div>
-    <table class="tbl tbl--compact" style="font-size:11px">
+    <table class="tbl tbl--compact np-tbl">
       <thead><tr>
-        <th style="text-align:right">${laneDot("I")} ${esc(nameA)}${pbA?` <span style="font-weight:400;color:var(--text-muted)">PB ${pbA}</span>`:""}<br><span style="font-weight:400;font-size:10px;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)}</span></th>
-        <th style="text-align:center;font-size:10px"></th>
-        <th>${laneDot("O")} ${esc(nameB)}${pbB?` <span style="font-weight:400;color:var(--text-muted)">PB ${pbB}</span>`:""}<br><span style="font-weight:400;font-size:10px;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)}</span></th>
-        <th style="text-align:center;font-size:10px">Δ</th>
+        <th class="r">${laneDot("I")} ${esc(nameA)}<br><span class="sub">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span></th>
+        <th class="c"></th>
+        <th>${laneDot("O")} ${esc(nameB)}<br><span class="sub">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span></th>
+        <th class="c">Δ</th>
       </tr></thead>
       <tbody>${rows}
-        <tr style="border-top:2px solid var(--border)"><td class="mono" style="text-align:right;font-weight:700">${fmtPts(pA)}</td><td style="text-align:center;font-size:10px;color:var(--text-dim)">Pts</td><td class="mono" style="font-weight:700">${fmtPts(pB)}</td><td style="text-align:center;font-size:10px">${ptsDiffStr}</td></tr>
+        <tr class="np-pts"><td class="mono r">${fmtPts(pA)}</td><td class="c dim">Pts</td><td class="mono">${fmtPts(pB)}</td><td></td></tr>
       </tbody>
     </table>
+    <div class="np-info">
+      <div class="np-info__row">
+        <div class="np-info__label">🎯 Time to lead (${esc(leaderName)})</div>
+        <div class="np-info__vals"><span class="r">${ttlStr(ttlA,nameA)}</span><span>${ttlStr(ttlB,nameB)}</span></div>
+      </div>
+      <div class="np-info__row">
+        <div class="np-info__label">⚔ Onderling op ${esc(dist.label)}</div>
+        <div class="np-info__vals"><span class="r">${mutualStr(true)}</span><span>${mutualStr(false)}</span></div>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -667,21 +702,39 @@ function renderDeelnemers(){
 function openPopup(name){
   if(!standings)return;const a=standings.all.find(x=>x.name===name);if(!a)return;const ds=getDists();const g=state.gender;
   const rowed=ds.filter(d=>a.times[d.key]);
-  // Collect records and PB per distance
+  // Collect records and PB per distance from ALL start-lists
   const records={},pbs={};
   for(const d of ds){
     const res=(dataCache[g][d.key]??[]).find(r=>r.name===name);
     if(res?.record)records[d.key]=res.record;
+    // Search all start-lists for PB on this distance
     const sl=(startListCache[g][d.key]??[]).find(s=>s.name===name);
     if(sl?.pb)pbs[d.key]=sl.pb;
   }
-  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>${esc(name)}</h3><div style="font-size:12px;color:var(--text-dim)">${flag(a.country)} ${esc(a.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
+  // Also show PB for distances not yet raced
+  const allDists=ds.map(d=>{
+    const hasResult=Number.isFinite(a.seconds[d.key]);
+    const pb=pbs[d.key]?fmtTime(parseTime(pbs[d.key])):"";
+    return{d,hasResult,pb};
+  });
+
+  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>${esc(name)}</h3><div style="font-size:13px;color:var(--text-dim)">${flag(a.country)} ${esc(a.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
       <div class="stat-box"><div class="stat-box__label">Points</div><div class="stat-box__value">${fmtPts(a.currentPoints)}</div></div>
       <div class="stat-box"><div class="stat-box__label">Distances</div><div class="stat-box__value">${a.completedCount}/${ds.length}</div></div>
     </div>`;
-  if(rowed.length)h+=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Distance</th><th>Time</th><th>Pos</th><th>Points</th><th>PB</th></tr></thead><tbody>${rowed.map(d=>{const dr=a.distRanks[d.key];const badge=recordBadge(records[d.key]);const pb=pbs[d.key]?fmtTime(parseTime(pbs[d.key])):"";return`<tr class="${podCls(dr)}"><td>${esc(d.label)}</td><td class="mono">${fmtTime(a.seconds[d.key])} ${badge}</td><td>${dr?`${dr} ${medal(dr)}`:"—"}</td><td class="mono">${fmtPts(a.points[d.key])}</td><td class="mono" style="color:var(--text-dim)">${pb}</td></tr>`}).join("")}</tbody></table></div>`;
+  // Full distance table: show ALL distances, not just rowed
+  h+=`<div class="table-wrap"><table class="tbl"><thead><tr><th>Distance</th><th>Time</th><th>Pos</th><th>Points</th><th>PB</th></tr></thead><tbody>`;
+  for(const{d,hasResult,pb}of allDists){
+    const dr=a.distRanks[d.key];const badge=recordBadge(records[d.key]);
+    if(hasResult){
+      h+=`<tr class="${podCls(dr)}"><td>${esc(d.label)}</td><td class="mono">${fmtTime(a.seconds[d.key])} ${badge}</td><td>${dr?`${dr} ${medal(dr)}`:"—"}</td><td class="mono">${fmtPts(a.points[d.key])}</td><td class="mono" style="color:var(--orange)">${pb}</td></tr>`;
+    }else{
+      h+=`<tr style="opacity:.5"><td>${esc(d.label)}</td><td class="mono" style="color:var(--text-muted)">—</td><td>—</td><td class="mono">—</td><td class="mono" style="color:var(--orange)">${pb}</td></tr>`;
+    }
+  }
+  h+=`</tbody></table></div>`;
   h+=`</div>`;el.overlay.innerHTML=h;el.overlay.hidden=false;
   document.getElementById("closePopup")?.addEventListener("click",()=>{el.overlay.hidden=true});
 }
@@ -708,24 +761,34 @@ function openPairPopup(pairNum,distKey){
   const timeDiff=Number.isFinite(ptsDiff)?ptsDiff*dist.divisor:null;
   const timeDiffStr=Number.isFinite(timeDiff)?fmtDelta(timeDiff):"—";
 
-  // PB per skater for this distance
-  const pbA=pair[0].pb?fmtTime(parseTime(pair[0].pb)):"";
-  const pbB=pair[1].pb?fmtTime(parseTime(pair[1].pb)):"";
+  // PB per skater per distance (from all start-lists)
+  const pbsA={},pbsB={};
+  for(const d of ds){
+    const slD=startListCache[g][d.key]??[];
+    const sAd=slD.find(s=>s.name===rA.name);
+    const sBd=slD.find(s=>s.name===rB.name);
+    if(sAd?.pb)pbsA[d.key]=sAd.pb;
+    if(sBd?.pb)pbsB[d.key]=sBd.pb;
+  }
+  // PB for this specific distance (for header)
+  const pbA=pbsA[distKey]?fmtTime(parseTime(pbsA[distKey])):"";
+  const pbB=pbsB[distKey]?fmtTime(parseTime(pbsB[distKey])):"";
 
   const rows=ds.map(d=>{
     const sA=rA.seconds[d.key],sB=rB.seconds[d.key];
     const tA=Number.isFinite(sA)?fmtTime(sA):"—",tB=Number.isFinite(sB)?fmtTime(sB):"—";
-    // Record badges
     const recA=(dataCache[g][d.key]??[]).find(r=>r.name===rA.name)?.record;
     const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
+    const pA_pb=pbsA[d.key]?`<div style="color:var(--orange);font-size:10px">PB ${fmtTime(parseTime(pbsA[d.key]))}</div>`:"";
+    const pB_pb=pbsB[d.key]?`<div style="color:var(--orange);font-size:10px">PB ${fmtTime(parseTime(pbsB[d.key]))}</div>`:"";
     let diff="";
     if(Number.isFinite(sA)&&Number.isFinite(sB)){const dd=sA-sB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
-    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}</td><td style="text-align:center">${diff}</td></tr>`;
+    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}${pA_pb}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}${pB_pb}</td><td style="text-align:center">${diff}</td></tr>`;
   }).join("");
 
-  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:12px;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
+  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:13px;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="table-wrap" style="margin-bottom:14px"><table class="tbl">
-      <thead><tr><th style="text-align:right">${laneDot(pair[0].startLane)} ${esc(rA.name)}<br><span style="font-weight:400;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · PB ${pbA}`:""}</span></th><th style="text-align:center">Distance</th><th>${laneDot(pair[1].startLane)} ${esc(rB.name)}<br><span style="font-weight:400;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · PB ${pbB}`:""}</span></th><th style="text-align:center">Δ</th></tr></thead>
+      <thead><tr><th style="text-align:right">${laneDot(pair[0].startLane)} ${esc(rA.name)}<br><span style="font-weight:400;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span></th><th style="text-align:center">Distance</th><th>${laneDot(pair[1].startLane)} ${esc(rB.name)}<br><span style="font-weight:400;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span></th><th style="text-align:center">Δ</th></tr></thead>
       <tbody>${rows}
         <tr style="border-top:2px solid var(--border);font-weight:700"><td class="mono" style="text-align:right">${fmtPts(pA)}</td><td style="text-align:center;color:var(--text-dim);font-size:11px">Points</td><td class="mono">${fmtPts(pB)}</td><td style="text-align:center;font-size:11px">${ptsDiffStr}</td></tr>
       </tbody>

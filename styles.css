@@ -73,6 +73,24 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .tile-tab{font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-weight:600;transition:all .15s}
 .tile-tab:hover{border-color:var(--isu-blue);color:var(--isu-blue)}
 .tile-tab--active{background:var(--isu-blue);color:#fff;border-color:var(--isu-blue)}
+
+/* ── Next Pair tile layout ───────────────────────────── */
+.np-wrap{padding:10px 12px;display:flex;flex-direction:column;height:100%}
+.np-header{margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.np-tbl{font-size:12px}
+.np-tbl .r{text-align:right}
+.np-tbl .c{text-align:center}
+.np-tbl .dim{color:var(--text-dim);font-size:10px}
+.np-tbl .sub{font-weight:400;font-size:10px;text-transform:none}
+.np-tbl thead th{font-size:11px}
+.np-pts{border-top:2px solid var(--border)}
+.np-pts td{font-weight:700}
+.np-info{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border)}
+.np-info__row{}
+.np-info__label{font-size:11px;font-weight:700;color:var(--isu-blue);margin-bottom:4px}
+.np-info__vals{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.np-info__vals span{font-family:var(--font-mono)}
+.np-info__vals .r{text-align:right}
 .tile-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .tile-body::-webkit-scrollbar{width:4px}
 .tile-body::-webkit-scrollbar-track{background:transparent}
