@@ -633,11 +633,19 @@ function fillTile3NextPair(dist){
     <div class="np-header">
       <span style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</span>
     </div>
+    <div class="np-names">
+      <div class="np-name np-name--left">${laneDot("I")} <span class="athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span> <span class="np-rank">#${rA.rank??"—"}</span></div>
+      <div class="np-name">${laneDot("O")} <span class="athlete" data-name="${esc(rB.name)}">${esc(nameB)}</span> <span class="np-rank">#${rB.rank??"—"}</span></div>
+    </div>
+    <div class="np-sub">
+      <span>${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span>
+      <span>${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span>
+    </div>
     <table class="tbl tbl--compact np-tbl">
       <thead><tr>
-        <th class="r">${laneDot("I")} ${esc(nameA)}<br><span class="sub">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span></th>
+        <th class="r">${esc(nameA)}</th>
         <th class="c"></th>
-        <th>${laneDot("O")} ${esc(nameB)}<br><span class="sub">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span></th>
+        <th>${esc(nameB)}</th>
         <th class="c">Δ</th>
       </tr></thead>
       <tbody>${rows}
@@ -674,14 +682,25 @@ function fillTile4(nextDist){
 
   const show=fs;if(!show?.ranked?.length){body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">No standings yet</div>`;return}
   const ds=getDists();const cc=ds.filter(d=>show.all.some(a=>Number.isFinite(a.seconds[d.key]))).length;
+  const allDone=cc>=ds.length;
   const lPts=standings?.leader?.currentPoints;
   const rows=show.ranked.map(a=>{
-    const nt=neededTime(a,nextDist.key,lPts);
-    const ntStr=Number.isFinite(nt)&&nt>0?`<span class="target-time">${fmtTime(nt)}</span>`:Number.isFinite(nt)?`<span class="needed-time">✓</span>`:"";
-    return`<tr class="${podCls(a.rank)}"><td><strong>${a.rank}</strong></td><td><span class="athlete" data-name="${esc(a.name)}">${esc(a.name)}</span><span class="country">${esc(a.country??"")}</span></td><td class="mono"><strong>${fmtPts(a.currentPoints)}</strong></td><td>${ntStr}</td></tr>`;
+    let lastCol="";
+    if(allDone){
+      // All distances done: show points difference to leader
+      if(a.rank===1)lastCol='<span class="delta delta--leader">L</span>';
+      else if(Number.isFinite(a.delta))lastCol=`<span class="delta">+${fmtPts(a.delta)}</span>`;
+    }else{
+      // Still racing: show needed time on next distance
+      const nt=neededTime(a,nextDist.key,lPts);
+      lastCol=Number.isFinite(nt)&&nt>0?`<span class="target-time">${fmtTime(nt)}</span>`:Number.isFinite(nt)?`<span class="needed-time">✓</span>`:"";
+    }
+    return`<tr class="${podCls(a.rank)}"><td><strong>${a.rank}</strong></td><td><span class="athlete" data-name="${esc(a.name)}">${esc(a.name)}</span><span class="country">${esc(a.country??"")}</span></td><td class="mono"><strong>${fmtPts(a.currentPoints)}</strong></td><td>${lastCol}</td></tr>`;
   }).join("");
-  body.innerHTML=`<div style="padding:4px 10px;font-size:10px;color:var(--text-muted)">After ${cc}/${ds.length} distances · Next: ${esc(nextDist.label)}</div>
-    <table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Points</th><th>Need ${esc(nextDist.label)}</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const headerCol=allDone?"Δ Points":`Need ${esc(nextDist.label)}`;
+  const subline=allDone?`Final standings · ${cc}/${ds.length} distances`:`After ${cc}/${ds.length} distances · Next: ${esc(nextDist.label)}`;
+  body.innerHTML=`<div style="padding:4px 10px;font-size:10px;color:var(--text-muted)">${subline}</div>
+    <table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Points</th><th>${headerCol}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ── DISTANCE DETAIL ─────────────────────────────────────

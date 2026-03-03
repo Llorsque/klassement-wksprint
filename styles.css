@@ -76,7 +76,13 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 
 /* ── Next Pair tile layout ───────────────────────────── */
 .np-wrap{padding:10px 12px;display:flex;flex-direction:column;height:100%}
-.np-header{margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.np-header{margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.np-names{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:2px}
+.np-name{font-size:17px;font-weight:800;display:flex;align-items:center;gap:6px}
+.np-name--left{justify-content:flex-end}
+.np-rank{font-size:12px;font-weight:600;color:var(--isu-blue);opacity:.8}
+.np-sub{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10px;color:var(--text-dim);margin-bottom:6px}
+.np-sub span:first-child{text-align:right}
 .np-tbl{font-size:12px}
 .np-tbl .r{text-align:right}
 .np-tbl .c{text-align:center}
