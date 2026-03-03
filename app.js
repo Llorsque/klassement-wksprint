@@ -634,20 +634,10 @@ function fillTile3NextPair(dist){
       <span style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</span>
     </div>
     <div class="np-names">
-      <div class="np-name np-name--left">${laneDot("I")} <span class="athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span> <span class="np-rank">#${rA.rank??"—"}</span></div>
-      <div class="np-name">${laneDot("O")} <span class="athlete" data-name="${esc(rB.name)}">${esc(nameB)}</span> <span class="np-rank">#${rB.rank??"—"}</span></div>
-    </div>
-    <div class="np-sub">
-      <span>${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span>
-      <span>${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span>
+      <div class="np-namebox np-namebox--left"><span class="lane-dot lane-dot--inner" title="Inner"></span><span class="np-namebox__name athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span><span class="np-namebox__rank">#${rA.rank??"—"}</span></div>
+      <div class="np-namebox"><span class="lane-dot lane-dot--outer" title="Outer"></span><span class="np-namebox__name athlete" data-name="${esc(rB.name)}">${esc(nameB)}</span><span class="np-namebox__rank">#${rB.rank??"—"}</span></div>
     </div>
     <table class="tbl tbl--compact np-tbl">
-      <thead><tr>
-        <th class="r">${esc(nameA)}</th>
-        <th class="c"></th>
-        <th>${esc(nameB)}</th>
-        <th class="c">Δ</th>
-      </tr></thead>
       <tbody>${rows}
         <tr class="np-pts"><td class="mono r">${fmtPts(pA)}</td><td class="c dim">Pts</td><td class="mono">${fmtPts(pB)}</td><td></td></tr>
       </tbody>
