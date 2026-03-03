@@ -442,7 +442,7 @@ function renderOverview(){
     <div class="overview-header">
       <h2>${state.gender==="v"?"Women":"Men"} — Sprint Championship</h2>
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:var(--text-dim)">Distance:</span>
+        <span style="font-size:0.78rem;color:var(--text-dim)">Distance:</span>
         <select id="distSel" class="sel">${distOpts}</select>
       </div>
     </div>
@@ -490,7 +490,7 @@ function fillTile1(dist){
     const dStr=diff===0?"":`<span class="delta">${fmtDelta(diff)}</span>`;
     const badge=recordBadge(r.record);
     const pb=getPB(r.name,dist.key);
-    const pbStr=pb?`<span style="color:var(--orange);font-size:10px">${pb}</span>`:"";
+    const pbStr=pb?`<span style="color:var(--orange);font-size:0.7rem">${pb}</span>`:"";
     return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong></td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td>${pbStr}</td><td>${dStr}</td></tr>`;
   }).join("");
   body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Time</th><th style="color:var(--orange)">PB</th><th>+</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -526,7 +526,7 @@ function fillTile3(dist){
       const nt=ath?neededTime(ath,dist.key,lPts):null;
       const ntStr=Number.isFinite(nt)&&nt>0?`<span class="target-time">${fmtTime(nt)}</span>`:Number.isFinite(nt)?`<span class="needed-time">✓</span>`:"";
       const pb=getPB(s.name,dist.key);
-      const pbStr=pb?`<span style="color:var(--orange);font-size:10px">${pb}</span>`:"";
+      const pbStr=pb?`<span style="color:var(--orange);font-size:0.7rem">${pb}</span>`:"";
       const pairCell=si===0?`<span class="pair-link" data-pair="${pn}" data-dist="${dist.key}">${pn}</span>`:"";
       rows+=`<tr><td>${pairCell}</td><td>${laneDot(s.startLane)}</td><td><span class="athlete" data-name="${esc(s.name)}">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></td><td>${pbStr}</td><td>${ntStr}</td></tr>`;
     }
@@ -571,8 +571,8 @@ function fillTile3NextPair(dist){
     const nt=a?neededTime(a,dist.key,lPts):null;
     const ntStr=Number.isFinite(nt)&&nt>0?fmtTime(nt):"";
     body.innerHTML=`<div style="padding:16px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:8px">Rit ${pairNum} — Solo${allDone?' <span style="color:var(--green)">✓ Finished</span>':""}</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${laneDot(s.startLane)} <span class="athlete" data-name="${esc(s.name)}" style="font-size:14px;font-weight:600">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></div>
+      <div style="font-size:1rem;font-weight:700;margin-bottom:8px">Rit ${pairNum} — Solo${allDone?' <span style="color:var(--green)">✓ Finished</span>':""}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${laneDot(s.startLane)} <span class="athlete" data-name="${esc(s.name)}" style="font-size:1rem;font-weight:600">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></div>
       ${a?`<div class="stat-grid" style="margin-bottom:8px">
         <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
         <div class="stat-box"><div class="stat-box__label">Points</div><div class="stat-box__value">${fmtPts(a.currentPoints)}</div></div>
@@ -631,7 +631,7 @@ function fillTile3NextPair(dist){
 
   body.innerHTML=`<div class="np-wrap">
     <div class="np-header">
-      <span style="font-size:13px;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:11px">✓ All done</span>':""}</span>
+      <span style="font-size:0.92rem;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:0.78rem">✓ All done</span>':""}</span>
     </div>
     <div class="np-names">
       <div class="np-namebox np-namebox--left"><span class="lane-dot lane-dot--inner" title="Inner"></span><span class="np-namebox__name athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span><span class="np-namebox__rank">#${rA.rank??"—"}</span></div>
@@ -667,7 +667,7 @@ function fillTile4(nextDist){
   if(!frozenStandings[state.gender])freezeStandings();
   const fs=frozenStandings[state.gender];
   const hasUpdate=standingsHash(standings)!==standingsHash(fs);
-  if(upd)upd.innerHTML=hasUpdate?`<button class="btn--update" id="updateFrozen">🔄 Update</button>`:`<span style="font-size:10px;color:var(--text-muted)">Up to date</span>`;
+  if(upd)upd.innerHTML=hasUpdate?`<button class="btn--update" id="updateFrozen">🔄 Update</button>`:`<span style="font-size:0.7rem;color:var(--text-muted)">Up to date</span>`;
   document.getElementById("updateFrozen")?.addEventListener("click",()=>{freezeStandings();render()});
 
   const show=fs;if(!show?.ranked?.length){body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">No standings yet</div>`;return}
@@ -689,7 +689,7 @@ function fillTile4(nextDist){
   }).join("");
   const headerCol=allDone?"Δ Points":`Need ${esc(nextDist.label)}`;
   const subline=allDone?`Final standings · ${cc}/${ds.length} distances`:`After ${cc}/${ds.length} distances · Next: ${esc(nextDist.label)}`;
-  body.innerHTML=`<div style="padding:4px 10px;font-size:10px;color:var(--text-muted)">${subline}</div>
+  body.innerHTML=`<div style="padding:4px 10px;font-size:0.7rem;color:var(--text-muted)">${subline}</div>
     <table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Points</th><th>${headerCol}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -716,18 +716,18 @@ function renderDistance(dKey){
   const sideR=standings.ranked.map(a=>{
     const nt=neededTime(a,nextDist.key,lPts);
     const ntStr=(a.rank>1&&Number.isFinite(nt)&&nt>0)?`<span class="target-time">${fmtTime(nt)}</span>`:"";
-    const dStr=a.rank===1?'<span class="delta delta--leader">L</span>':Number.isFinite(a.delta)?`<span class="delta" style="font-size:10px">${fmtDelta(a.delta*nextDist.divisor)}</span>`:"";
-    return`<tr><td style="font-weight:700;font-size:11px;color:var(--text-dim)">${a.rank}</td><td><span class="athlete" data-name="${esc(a.name)}">${esc(a.name)}</span></td><td class="mono">${fmtPts(a.currentPoints)}</td><td>${dStr}</td><td>${ntStr}</td></tr>`;
+    const dStr=a.rank===1?'<span class="delta delta--leader">L</span>':Number.isFinite(a.delta)?`<span class="delta" style="font-size:0.7rem">${fmtDelta(a.delta*nextDist.divisor)}</span>`:"";
+    return`<tr><td style="font-weight:700;font-size:0.78rem;color:var(--text-dim)">${a.rank}</td><td><span class="athlete" data-name="${esc(a.name)}">${esc(a.name)}</span></td><td class="mono">${fmtPts(a.currentPoints)}</td><td>${dStr}</td><td>${ntStr}</td></tr>`;
   }).join("");
   const cc=ds.filter(d=>standings.all.some(a=>Number.isFinite(a.seconds[d.key]))).length;
 
   el.contentArea.innerHTML=`
-    <h2 style="font-size:17px;font-weight:800;margin-bottom:12px">${esc(dist.label)} — ${state.gender==="v"?"Women":"Men"}</h2>
-    <div style="display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start">
+    <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:12px">${esc(dist.label)} — ${state.gender==="v"?"Women":"Men"}</h2>
+    <div style="display:grid;grid-template-columns:1fr clamp(280px,25vw,450px);gap:var(--gap);align-items:start">
       <div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>Name</th><th>Time</th><th style="color:var(--orange)">PB</th><th>Points</th><th>Gap</th></tr></thead><tbody>${mainR}</tbody></table></div>
       <div>
-        <div style="font-size:12px;font-weight:700;color:var(--isu-blue);margin-bottom:4px">Live Standings <span style="color:var(--text-dim);font-weight:400">(${cc}/${ds.length})</span></div>
-        ${nextDist?`<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Target on ${esc(nextDist.label)} for P1</div>`:""}
+        <div style="font-size:0.85rem;font-weight:700;color:var(--isu-blue);margin-bottom:4px">Live Standings <span style="color:var(--text-dim);font-weight:400">(${cc}/${ds.length})</span></div>
+        ${nextDist?`<div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:6px">Target on ${esc(nextDist.label)} for P1</div>`:""}
         <div class="table-wrap"><table class="tbl tbl--compact"><thead><tr><th>#</th><th>Name</th><th>Pts</th><th>Δ</th><th>Target</th></tr></thead><tbody>${sideR}</tbody></table></div>
       </div>
     </div>`;
@@ -745,8 +745,8 @@ function renderKlassement(){
   }).join("");
   const cc=ds.filter(d=>standings.all.some(a=>Number.isFinite(a.seconds[d.key]))).length;
   el.contentArea.innerHTML=`
-    <h2 style="font-size:17px;font-weight:800;margin-bottom:2px">Sprint Championship Standings — ${state.gender==="v"?"Women":"Men"}</h2>
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">After ${cc}/${ds.length} distances${lastFetch[state.gender]?` · Updated ${lastFetch[state.gender].toLocaleTimeString("nl-NL")}`:""}</div>
+    <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:2px">Sprint Championship Standings — ${state.gender==="v"?"Women":"Men"}</h2>
+    <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:12px">After ${cc}/${ds.length} distances${lastFetch[state.gender]?` · Updated ${lastFetch[state.gender].toLocaleTimeString("nl-NL")}`:""}</div>
     <div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>Name</th>${hdr}<th>Points</th><th>Δ</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="info-box"><strong>Sorting:</strong> most distances completed → lowest points. Points = time(s) ÷ distance factor (500m=1, 1000m=2), truncated to 3 decimals.</div>`;
 }
@@ -755,7 +755,7 @@ function renderKlassement(){
 function renderDeelnemers(){
   const g=state.gender;
   const parts=buildParticipants(g);
-  if(!parts.length){el.contentArea.innerHTML=`<h2 style="font-size:17px;font-weight:800;margin-bottom:12px">Deelnemers — ${g==="v"?"Women":"Men"}</h2><div class="info-box">No participants loaded yet. Data will appear once results or start lists are fetched.</div>`;return}
+  if(!parts.length){el.contentArea.innerHTML=`<h2 style="font-size:1.2rem;font-weight:800;margin-bottom:12px">Deelnemers — ${g==="v"?"Women":"Men"}</h2><div class="info-box">No participants loaded yet. Data will appear once results or start lists are fetched.</div>`;return}
   const ac=parts.filter(p=>isActive(p.name)).length;
   const rows=parts.map(p=>{
     const act=isActive(p.name);
@@ -766,12 +766,12 @@ function renderDeelnemers(){
       <td><span class="athlete" data-name="${esc(p.name)}">${esc(p.name)}</span> <span class="country">${esc(p.country)}</span></td>
       <td class="mono">${cc>0?fmtPts(pts):"—"}</td>
       <td>${a?.rank??"—"}</td>
-      <td><button class="btn ${act?"btn--ghost":"btn--inactive"}" data-toggle="${esc(p.name)}" style="font-size:11px;padding:3px 10px">${act?"Actief":"Inactief"}</button></td>
+      <td><button class="btn ${act?"btn--ghost":"btn--inactive"}" data-toggle="${esc(p.name)}" style="font-size:0.78rem;padding:3px 10px">${act?"Actief":"Inactief"}</button></td>
     </tr>`;
   }).join("");
   el.contentArea.innerHTML=`
-    <h2 style="font-size:17px;font-weight:800;margin-bottom:2px">Deelnemers — ${g==="v"?"Women":"Men"}</h2>
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">${ac}/${parts.length} actief</div>
+    <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:2px">Deelnemers — ${g==="v"?"Women":"Men"}</h2>
+    <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:12px">${ac}/${parts.length} actief</div>
     <div class="table-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Points</th><th>Rank</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="info-box">Klik <strong>Actief/Inactief</strong> om rijders uit het klassement te halen (bijv. bij opgave of diskwalificatie).</div>`;
   el.contentArea.addEventListener("click",e=>{
@@ -799,7 +799,7 @@ function openPopup(name){
     return{d,hasResult,pb};
   });
 
-  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>${esc(name)}</h3><div style="font-size:13px;color:var(--text-dim)">${flag(a.country)} ${esc(a.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
+  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>${esc(name)}</h3><div style="font-size:0.92rem;color:var(--text-dim)">${flag(a.country)} ${esc(a.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
       <div class="stat-box"><div class="stat-box__label">Points</div><div class="stat-box__value">${fmtPts(a.currentPoints)}</div></div>
@@ -853,21 +853,21 @@ function openPairPopup(pairNum,distKey){
     const recB=(dataCache[g][d.key]??[]).find(r=>r.name===rB.name)?.record;
     const pA_pb=getPB(rA.name,d.key);
     const pB_pb=getPB(rB.name,d.key);
-    const pA_pbH=pA_pb?`<div style="color:var(--orange);font-size:10px">PB ${pA_pb}</div>`:"";
-    const pB_pbH=pB_pb?`<div style="color:var(--orange);font-size:10px">PB ${pB_pb}</div>`:"";
+    const pA_pbH=pA_pb?`<div style="color:var(--orange);font-size:0.7rem">PB ${pA_pb}</div>`:"";
+    const pB_pbH=pB_pb?`<div style="color:var(--orange);font-size:0.7rem">PB ${pB_pb}</div>`:"";
     let diff="";
     if(Number.isFinite(sA)&&Number.isFinite(sB)){const dd=sA-sB;diff=Math.abs(dd)<0.005?'<span style="color:var(--text-dim)">—</span>':dd<0?`<span style="color:var(--green)">${fmtDelta(dd)}</span>`:`<span style="color:var(--red)">${fmtDelta(dd)}</span>`}
-    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}${pA_pbH}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:11px">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}${pB_pbH}</td><td style="text-align:center">${diff}</td></tr>`;
+    return`<tr><td class="mono" style="text-align:right">${tA} ${recordBadge(recA)}${pA_pbH}</td><td style="text-align:center;font-weight:600;color:var(--text-dim);font-size:0.78rem">${esc(d.label)}</td><td class="mono">${tB} ${recordBadge(recB)}${pB_pbH}</td><td style="text-align:center">${diff}</td></tr>`;
   }).join("");
 
-  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:13px;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
+  let h=`<div class="panel"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px"><div><h3>Rit ${pairNum} — ${esc(dist.label)}</h3><div style="font-size:0.92rem;color:var(--text-dim)">${laneDot("I")} ${esc(rA.name)} ${esc(rA.country)} vs ${laneDot("O")} ${esc(rB.name)} ${esc(rB.country)}</div></div><button class="close-btn" id="closePopup">✕</button></div>
     <div class="table-wrap" style="margin-bottom:14px"><table class="tbl">
       <thead><tr><th style="text-align:right">${laneDot(pair[0].startLane)} ${esc(rA.name)}<br><span style="font-weight:400;text-transform:none">#${rA.rank??"—"} · ${fmtPts(pA)} pts${pbA?` · <span style="color:var(--orange)">PB ${pbA}</span>`:""}</span></th><th style="text-align:center">Distance</th><th>${laneDot(pair[1].startLane)} ${esc(rB.name)}<br><span style="font-weight:400;text-transform:none">#${rB.rank??"—"} · ${fmtPts(pB)} pts${pbB?` · <span style="color:var(--orange)">PB ${pbB}</span>`:""}</span></th><th style="text-align:center">Δ</th></tr></thead>
       <tbody>${rows}
-        <tr style="border-top:2px solid var(--border);font-weight:700"><td class="mono" style="text-align:right">${fmtPts(pA)}</td><td style="text-align:center;color:var(--text-dim);font-size:11px">Points</td><td class="mono">${fmtPts(pB)}</td><td style="text-align:center;font-size:11px">${ptsDiffStr}</td></tr>
+        <tr style="border-top:2px solid var(--border);font-weight:700"><td class="mono" style="text-align:right">${fmtPts(pA)}</td><td style="text-align:center;color:var(--text-dim);font-size:0.78rem">Points</td><td class="mono">${fmtPts(pB)}</td><td style="text-align:center;font-size:0.78rem">${ptsDiffStr}</td></tr>
       </tbody>
     </table></div>
-    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:12px">
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:0.85rem">
       <div style="font-weight:700;color:var(--isu-blue);margin-bottom:4px">Points difference on ${esc(dist.label)}</div>
       <div>Difference: <strong>${ptsDiffStr}</strong> = <strong class="mono">${timeDiffStr}</strong> on ${esc(dist.label)}</div>
     </div>
