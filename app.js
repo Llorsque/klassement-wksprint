@@ -75,30 +75,50 @@ function getDists(){return DISTANCES[state.gender]}
 function getCompId(g,dKey){return DISTANCES[g].find(d=>d.key===dKey)?.compId}
 
 // ── FETCH ───────────────────────────────────────────────
+// Track which fetch method works to skip slow ones next time
+let bestMethod={};// {compId_type: "direct"|"allorigins"|"corsproxy"|"jina"}
+
+function fetchWithTimeout(url,opts,ms=4000){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),ms);
+  return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(t));
+}
+
 async function fetchJSON(compId,type="results"){
   const cb=Date.now();
   const apiUrl=`${API_BASE}/${compId}/${type}/`;
-  // Try 1: Direct API
-  try{
-    const r=await fetch(`${apiUrl}?_=${cb}`,{cache:"no-store"});
-    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} direct API ✅`);return arr}}
-  }catch(_){}
-  // Try 2: allorigins proxy (on API url for JSON)
-  try{
-    const r=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&_=${cb}`,{cache:"no-store"});
-    if(r.ok){const w=await r.json();if(w.contents){const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} allorigins ✅`);return arr}}}
-  }catch(_){}
-  // Try 3: corsproxy.io
-  try{
-    const r=await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"});
-    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){console.log(`[WK] C${compId}/${type} corsproxy ✅`);return arr}}
-  }catch(_){}
-  // Try 4: Jina reader on LIVE page (text fallback)
-  try{
+  const key=`${compId}_${type}`;
+  const best=bestMethod[key];
+
+  // Helper: try a method
+  async function tryDirect(){
+    const r=await fetchWithTimeout(`${apiUrl}?_=${cb}`,{cache:"no-store"},4000);
+    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){bestMethod[key]="direct";console.log(`[WK] C${compId}/${type} direct ✅`);return arr}}
+    return null;
+  }
+  async function tryAllorigins(){
+    const r=await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&_=${cb}`,{cache:"no-store"},5000);
+    if(r.ok){const w=await r.json();if(w.contents){const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){bestMethod[key]="allorigins";console.log(`[WK] C${compId}/${type} allorigins ✅`);return arr}}}
+    return null;
+  }
+  async function tryCorsproxy(){
+    const r=await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"},5000);
+    if(r.ok){const d=await r.json();const arr=Array.isArray(d)?d:(d?.results??[]);if(arr.length>0){bestMethod[key]="corsproxy";console.log(`[WK] C${compId}/${type} corsproxy ✅`);return arr}}
+    return null;
+  }
+  async function tryJina(){
     const url=`${LIVE_BASE}/${compId}/${type}`;
-    const r=await fetch(`${JINA}${url}?_=${cb}`,{cache:"no-store",headers:{"Accept":"text/plain"}});
-    if(r.ok){const t=await r.text();if(t.length>200){console.log(`[WK] C${compId}/${type} jina text ✅ (${t.length} chars)`);return{_text:t}}}
-  }catch(_){}
+    const r=await fetchWithTimeout(`${JINA}${url}?_=${cb}`,{cache:"no-store",headers:{"Accept":"text/plain"}},6000);
+    if(r.ok){const t=await r.text();if(t.length>200){bestMethod[key]="jina";console.log(`[WK] C${compId}/${type} jina ✅ (${t.length}c)`);return{_text:t}}}
+    return null;
+  }
+
+  const methods={direct:tryDirect,allorigins:tryAllorigins,corsproxy:tryCorsproxy,jina:tryJina};
+  const order=best?[best,...Object.keys(methods).filter(m=>m!==best)]:Object.keys(methods);
+
+  for(const m of order){
+    try{const r=await methods[m]();if(r)return r}catch(_){}
+  }
   return null;
 }
 
@@ -348,30 +368,39 @@ function parseTextStartList(text){
 async function fetchGender(g,onlyDist){
   const ds=DISTANCES[g];
   const toFetch=onlyDist?ds.filter(d=>d.key===onlyDist):ds;
-  for(const d of toFetch){
-    // Fetch results
+
+  if(onlyDist){
+    // Single-distance poll: sequential is fine, it's just 1 distance
+    const d=toFetch[0];
     const raw=await fetchJSON(d.compId,"results");
     const results=parseAPIResults(raw,g,d.key);
     if(results.length>0)dataCache[g][d.key]=results;
-    // Always fetch start-list (needed for PB data & pair info)
-    // Skip only if we already have start-list AND it's a single-distance poll
-    if(!onlyDist||!startListCache[g][d.key]?.length){
+    if(!startListCache[g][d.key]?.length){
       const slRaw=await fetchJSON(d.compId,"start-list");
       const sl=parseAPIStartList(slRaw);
-      if(sl.length>0){
-        startListCache[g][d.key]=sl;
-        // Store PBs from start-list into pbCache
-        for(const s of sl){
-          if(s.pb)storePB(g,d.key,s.name,s.pb);
-        }
-        console.log(`[WK] ${g}/${d.key} start-list: ${sl.length} skaters, PBs found: ${sl.filter(s=>s.pb).length}`);
-      }
+      if(sl.length>0){startListCache[g][d.key]=sl;for(const s of sl)if(s.pb)storePB(g,d.key,s.name,s.pb)}
     }
-    if(!onlyDist)await sleep(300);
+  }else{
+    // Full fetch: parallel results for ALL distances at once
+    const resultPromises=toFetch.map(d=>fetchJSON(d.compId,"results").then(raw=>{
+      const results=parseAPIResults(raw,g,d.key);
+      if(results.length>0)dataCache[g][d.key]=results;
+      // Progressive render: show data as soon as first distance arrives
+      computeStandings();render();
+    }).catch(e=>console.warn(`[WK] ${d.key} results:`,e)));
+
+    await Promise.all(resultPromises);
+
+    // Then parallel start-lists (lower priority, for PB data)
+    const slPromises=toFetch.map(d=>fetchJSON(d.compId,"start-list").then(slRaw=>{
+      const sl=parseAPIStartList(slRaw);
+      if(sl.length>0){startListCache[g][d.key]=sl;for(const s of sl)if(s.pb)storePB(g,d.key,s.name,s.pb)}
+    }).catch(e=>console.warn(`[WK] ${d.key} start-list:`,e)));
+
+    await Promise.all(slPromises);
   }
-  // Log PB cache status
   const pbCount=Object.values(pbCache[g]).reduce((sum,d)=>sum+Object.keys(d).length,0);
-  console.log(`[WK] PB cache for ${g}: ${pbCount} entries across ${Object.keys(pbCache[g]).length} distances`);
+  console.log(`[WK] PB cache ${g}: ${pbCount} entries`);
   lastFetch[g]=new Date();
 }
 
