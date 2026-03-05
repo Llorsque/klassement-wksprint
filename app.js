@@ -260,32 +260,31 @@ function parseTextResults(text,g,distKey){
   if(!text)return[];
   const results=[],lines=text.split(/\n/);
   const timeRe=/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/;
+  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu)/i;
   for(const line of lines){
+    if(junk.test(line.trim()))continue;
     const m=line.match(timeRe);
     if(!m)continue;
     const rawTime=m[1].replace(",",".");
     const sec=parseTime(rawTime);if(!sec)continue;
     const before=line.substring(0,m.index);
     const after=line.substring(m.index+m[1].length);
-    // Detect record badges ONLY after the time (not from "* TR Name" prefixes)
+    // Detect record badges ONLY after the time
     let rec="";if(/\bTR\b/.test(after))rec="TR";else if(/\bPB\b/.test(after))rec="PB";
-    // Clean the whole line from Jina markdown, then extract fields
     const cleanLine=cleanJinaName(before);
-    // Country code: last 3-letter uppercase word
+    if(junk.test(cleanLine.trim()))continue;
     const ccMatch=cleanLine.match(/\b([A-Z]{3})\s*$/)||cleanLine.match(/\b([A-Z]{3})\b/);
     let cc=ccMatch?ccMatch[1]:"";
-    if(["WR","TR","PB","NR","SR","DNS","DNF","DSQ","OMS"].includes(cc))cc="";
-    // Name: strip leading rank number, trailing country code
+    if(["WR","TR","PB","NR","SR","DNS","DNF","DSQ","OMS","ISU","URL","THE","AND","FOR"].includes(cc))cc="";
     let nameStr=cleanLine.replace(/^\d+\s*/,"").replace(/\s*[A-Z]{3}\s*$/,"").replace(/^\s*\*?\s*(WR|TR|PB|NR|SR)\s*/i,"").trim();
     if(nameStr.length<3)continue;
-    // Skip header rows
-    if(/^(rank|name|time|behind|lane|pair|no\b)/i.test(nameStr))continue;
-    // Behind
+    if(/^(rank|name|time|behind|lane|pair|no\b|ISU|URL|Markdown|Source|Content|Speed|Skating|World|Championship|Start|List|Lap|Result|Live|Competition)/i.test(nameStr))continue;
+    const words=nameStr.split(/\s+/);
+    if(words.length>4)continue;
     const behindMatch=after.match(/\+(\d{1,2}[:\.]?\d{2}[\.,]\d{2,3}|\d+[\.,]\d{2,3})/);
     const behind=behindMatch?behindMatch[0]:"";
     results.push({name:nameStr,country:cc,time:rawTime,seconds:trunc2(sec),rank:results.length+1,no:0,timeBehind:behind,startLane:"",record:rec,laps:[]});
   }
-  // Deduplicate by name (Jina sometimes outputs duplicates)
   const seen=new Set(),deduped=[];
   for(const r of results){const k=r.name+"|"+r.seconds;if(!seen.has(k)){seen.add(k);deduped.push(r)}}
   return deduped;
@@ -294,11 +293,24 @@ function parseTextStartList(text){
   if(!text)return[];
   const list=[],lines=text.split(/\n/);
   if(lines.length>5)console.log("[WK] SL text sample lines:",lines.slice(3,8));
+  // Jina garbage patterns to skip
+  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu)/i;
   for(const line of lines){
     const clean=cleanJinaName(line);
     if(!clean||clean.length<3)continue;
+    if(junk.test(clean.trim()))continue;
     if(/^(pair|lane|name|time|behind|rank|no\b)/i.test(clean.trim()))continue;
-    // Detect pair number: digit at start of cleaned line
+    // Must look like a person name: at least 2 words, first word capitalized, no special keywords
+    const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F\'-]+(?:\s+[A-Za-z\u00C0-\u017F\'-]+)+)/);
+    if(!nm)continue;
+    const name=nm[1].trim();
+    if(name.length<4)continue;
+    // Reject common non-name patterns
+    if(/^(Pair|Lane|Name|Time|Behind|Rank|Speed|Skating|World|Championship|Start|List|Lap|Result|Live|Competition|Event|Schedule|Markdown|Content|Source|URL|ISU)/i.test(name))continue;
+    // Reject if name contains too many lowercase-starting words (likely a sentence)
+    const words=name.split(/\s+/);
+    if(words.length>4)continue;
+    // Detect pair number
     let pairNum=null;
     const pairMatch=clean.match(/^\s*(\d{1,2})\s/);
     if(pairMatch)pairNum=parseInt(pairMatch[1]);
@@ -307,20 +319,13 @@ function parseTextStartList(text){
     // Lane
     const laneMatch=clean.match(/\b([OI])\b/);
     const lane=laneMatch?laneMatch[1]:"";
-    // Name
-    const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F\'-]+(?:\s+[A-Za-z\u00C0-\u017F\'-]+)+)/);
-    if(!nm)continue;
-    const name=nm[1].trim();
-    if(name.length<4||/^(Pair|Lane|Name|Time|Behind|Rank)/i.test(name))continue;
     // Country
     const ccm=clean.match(/\b([A-Z]{3})\b/g);
-    let cc=ccm?ccm.find(c=>!["PB","NO","TR","WR","NR","SR","DNS","DNF","DSQ"].includes(c))||"":"";
-    // PB: search both cleaned AND original line for a time pattern (PB is last time on line)
+    let cc=ccm?ccm.find(c=>!["PB","NO","TR","WR","NR","SR","DNS","DNF","DSQ","ISU","URL","THE","AND","FOR"].includes(c))||"":"";
+    // PB
     let pb="";
-    // From original line (preserves numbers that cleanJinaName might alter)
     const origTimes=[...line.matchAll(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/g)].map(m=>m[1]);
     if(origTimes.length>0)pb=origTimes[origTimes.length-1].replace(",",".");
-    // Fallback: from cleaned line
     if(!pb){const pbM=clean.match(/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})\s*$/);if(pbM)pb=pbM[1].replace(",",".")}
     const noMatch=clean.match(/\b(\d{2,3})\b/);
     const no=noMatch?parseInt(noMatch[1]):0;
