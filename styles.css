@@ -93,10 +93,7 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .np-namebox--left{justify-content:flex-end;text-align:right}
 .np-namebox__name{font-size:clamp(20px, 2vw, 48px);font-weight:900;letter-spacing:-.02em;white-space:nowrap}
 .np-namebox__rank{font-size:clamp(12px, 1.1vw, 24px);font-weight:700;color:var(--isu-blue)}
-.np-tbl{font-size:0.85rem;table-layout:fixed}
-.np-tbl col.np-col-time{width:30%}
-.np-tbl col.np-col-dist{width:22%}
-.np-tbl col.np-col-delta{width:18%}
+.np-tbl{font-size:0.85rem}
 .np-tbl .r{text-align:right}
 .np-tbl .c{text-align:center}
 .np-tbl .dim{color:var(--text-dim);font-size:0.7rem}

@@ -637,8 +637,8 @@ function fillTile3NextPair(dist){
       <div class="np-namebox np-namebox--left"><span class="lane-dot lane-dot--inner" title="Inner"></span><span class="np-namebox__name athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span><span class="np-namebox__rank">#${rA.rank??"—"}</span></div>
       <div class="np-namebox"><span class="lane-dot lane-dot--outer" title="Outer"></span><span class="np-namebox__name athlete" data-name="${esc(rB.name)}">${esc(nameB)}</span><span class="np-namebox__rank">#${rB.rank??"—"}</span></div>
     </div>
-    <table class="tbl tbl--compact np-tbl">
-      <colgroup><col class="np-col-time"><col class="np-col-dist"><col class="np-col-time"><col class="np-col-delta"></colgroup>
+    <table class="tbl tbl--compact np-tbl" style="table-layout:fixed;width:100%">
+      <colgroup><col style="width:30%"><col style="width:20%"><col style="width:30%"><col style="width:20%"></colgroup>
       <tbody>${rows}
         <tr class="np-pts"><td class="mono r">${fmtPts(pA)}</td><td class="c dim">Pts</td><td class="mono">${fmtPts(pB)}</td><td></td></tr>
       </tbody>
