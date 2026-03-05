@@ -76,74 +76,48 @@ function getDists(){return DISTANCES[state.gender]}
 function getCompId(g,dKey){return DISTANCES[g].find(d=>d.key===dKey)?.compId}
 
 // ── FETCH ───────────────────────────────────────────────
-// Track which fetch method works
-let globalBestProxy=null;
-let directCORSFailed=false;// once direct fails on CORS, never try again
+let globalBestProxy=null;// remembers which proxy works
 
-function fetchWithTimeout(url,opts,ms=3500){
+function fetchWithTimeout(url,opts,ms=4000){
   const ctrl=new AbortController();
   const t=setTimeout(()=>ctrl.abort(),ms);
   return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(t));
-}
-
-async function tryParseJSON(r){
-  if(!r||!r.ok)return null;
-  const d=await r.json();
-  const arr=Array.isArray(d)?d:(d?.results??d?.data??[]);
-  return arr.length>0?arr:null;
 }
 
 async function fetchJSON(compId,type="results"){
   const cb=Date.now();
   const apiUrl=`${API_BASE}/${compId}/${type}/`;
 
-  async function tryDirect(){
-    if(directCORSFailed)return null;
-    try{
-      const r=await fetchWithTimeout(`${apiUrl}?_=${cb}`,{cache:"no-store"},3000);
-      const arr=await tryParseJSON(r);
-      if(arr){globalBestProxy="direct";console.log(`[WK] C${compId}/${type} direct ✅`);return arr}
-    }catch(e){
-      // CORS or network error → mark direct as dead
-      directCORSFailed=true;console.log("[WK] Direct API CORS blocked, skipping from now on");
-    }
-    return null;
-  }
   async function tryCorsproxy(){
-    try{
-      const r=await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"},4000);
-      const arr=await tryParseJSON(r);
-      if(arr){globalBestProxy="corsproxy";console.log(`[WK] C${compId}/${type} corsproxy ✅`);return arr}
-    }catch(_){}
+    const r=await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"});
+    if(!r?.ok)return null;
+    const d=await r.json();
+    const arr=Array.isArray(d)?d:(d?.results??d?.data??[]);
+    if(arr.length>0){globalBestProxy="corsproxy";return arr}
     return null;
   }
   async function tryAllorigins(){
-    try{
-      const r=await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&_=${cb}`,{cache:"no-store"},4000);
-      if(!r?.ok)return null;
-      const w=await r.json();if(!w.contents)return null;
-      const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??d?.data??[]);
-      if(arr.length>0){globalBestProxy="allorigins";console.log(`[WK] C${compId}/${type} allorigins ✅`);return arr}
-    }catch(_){}
+    const r=await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}&_=${cb}`,{cache:"no-store"});
+    if(!r?.ok)return null;
+    const w=await r.json();if(!w.contents)return null;
+    const d=JSON.parse(w.contents);const arr=Array.isArray(d)?d:(d?.results??d?.data??[]);
+    if(arr.length>0){globalBestProxy="allorigins";return arr}
     return null;
   }
   async function tryJina(){
-    try{
-      const url=`${LIVE_BASE}/${compId}/${type}`;
-      const r=await fetchWithTimeout(`${JINA}${url}?_=${cb}`,{cache:"no-store",headers:{"Accept":"text/plain"}},5000);
-      if(r?.ok){const t=await r.text();if(t.length>200){console.log(`[WK] C${compId}/${type} jina ✅ (${t.length}c)`);return{_text:t}}}
-    }catch(_){}
+    const url=`${LIVE_BASE}/${compId}/${type}`;
+    const r=await fetchWithTimeout(`${JINA}${url}?_=${cb}`,{cache:"no-store",headers:{"Accept":"text/plain"}},5000);
+    if(r?.ok){const t=await r.text();if(t.length>200)return{_text:t}}
     return null;
   }
 
-  // Order: known proxy first, then corsproxy (most reliable), allorigins, jina
-  const all={direct:tryDirect,corsproxy:tryCorsproxy,allorigins:tryAllorigins,jina:tryJina};
+  const proxies={corsproxy:tryCorsproxy,allorigins:tryAllorigins,jina:tryJina};
   const order=globalBestProxy
-    ?[globalBestProxy,...Object.keys(all).filter(m=>m!==globalBestProxy)]
-    :Object.keys(all);
+    ?[globalBestProxy,...Object.keys(proxies).filter(m=>m!==globalBestProxy)]
+    :Object.keys(proxies);
 
   for(const m of order){
-    const r=await all[m]();if(r)return r;
+    try{const r=await proxies[m]();if(r){console.log(`[WK] C${compId}/${type} ${m} ✅`);return r}}catch(_){}
   }
   return null;
 }
@@ -992,10 +966,7 @@ function startPoll(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{t
 // ── BOOT ────────────────────────────────────────────────
 async function boot(){
   try{
-    cacheEls();loadInactive();render();
-    // Step 1: discover correct competition IDs for this event
-    bindEvents();render();
-    // Step 2: fetch data
+    cacheEls();loadInactive();bindEvents();render();
     await fetchGender(state.gender);
     render();
     console.log("[WK] Boot complete ✅");startPoll();
