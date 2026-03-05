@@ -150,8 +150,9 @@ function cleanJinaName(raw){
 function parseAPIResults(raw,g,distKey){
   if(!raw||raw._text)return parseTextResults(raw?._text,g,distKey);
   if(!Array.isArray(raw))return[];
-  if(raw.length>0)console.log("[WK] Results API sample:",JSON.stringify(raw[0]).substring(0,600));
-  return raw.filter(r=>r.time&&r.competitor?.skater).map(r=>{
+  const withTime=raw.filter(r=>r.time&&r.competitor?.skater);
+  console.log(`[WK] Results parse: ${raw.length} total, ${withTime.length} with time`);
+  return withTime.map(r=>{
     const sk=r.competitor.skater;
     const name=cleanName(`${sk.firstName} ${sk.lastName}`);
     // Record flags: ONLY from explicit API fields, never inferred
@@ -384,6 +385,8 @@ async function fetchGender(g,onlyDist){
     if(results.length>0){
       dataCache[g][d.key]=results;
       console.log(`[WK] ${g}/${d.key}: ${results.length} results`);
+    }else{
+      console.log(`[WK] ${g}/${d.key}: no results`);
     }
     if(!onlyDist){computeStandings();render()}
   }
@@ -391,18 +394,14 @@ async function fetchGender(g,onlyDist){
   // Start-lists: fetch if not yet cached
   for(const d of toFetch){
     if(startListCache[g][d.key]?.length>0)continue;
-    console.log(`[WK] Fetching start-list ${g}/${d.key}...`);
     const slRaw=await fetchJSON(d.compId,"start-list");
     const sl=parseAPIStartList(slRaw);
     if(sl.length>0){
       startListCache[g][d.key]=sl;
       for(const s of sl)if(s.pb)storePB(g,d.key,s.name,s.pb);
-      console.log(`[WK] ${g}/${d.key} start-list: ${sl.length} skaters`);
     }
   }
 
-  const pbCount=Object.values(pbCache[g]).reduce((sum,d)=>sum+Object.keys(d).length,0);
-  if(pbCount>0)console.log(`[WK] PB cache ${g}: ${pbCount} entries`);
   lastFetch[g]=new Date();
 }
 
@@ -964,18 +963,47 @@ function bindEvents(){
 }
 
 // ── POLL ────────────────────────────────────────────────
-let pollT=null,pollRunning=false;
+let pollT=null,pollRunning=false,pollCycle=0;
+function getActiveDists(){
+  // Distances that have results OR are currently selected
+  const ds=getDists(),g=state.gender;
+  const active=new Set();
+  // Always include currently selected distance
+  active.add(state.selectedDist);
+  // Include distances that already have results (to update them live)
+  for(const d of ds){
+    if(dataCache[g][d.key]?.length>0)active.add(d.key);
+  }
+  // Every 6th cycle (~30s), also try the next unstarted distance to discover new races
+  if(pollCycle%6===0){
+    for(const d of ds){
+      if(!dataCache[g][d.key]?.length){active.add(d.key);break}
+    }
+  }
+  return[...active];
+}
+
 function startPoll(){
   if(pollT)clearInterval(pollT);
   pollT=setInterval(async()=>{
-    if(pollRunning)return;// skip if previous poll still running
+    if(pollRunning)return;
     pollRunning=true;
+    pollCycle++;
     try{
       const dk=state.pollDist==="all"?undefined:state.pollDist;
-      console.log(`[WK] Poll ${dk||"all"}...`);
-      await fetchGender(state.gender,dk);
+      if(dk){
+        // Specific distance selected
+        console.log(`[WK] Poll ${dk}`);
+        await fetchGender(state.gender,dk);
+      }else{
+        // "All" mode: smart fetch only active distances
+        const activeDists=getActiveDists();
+        console.log(`[WK] Poll [${activeDists.join(",")}]`);
+        for(const dKey of activeDists){
+          await fetchGender(state.gender,dKey);
+        }
+      }
       render();
-      console.log(`[WK] Poll done, source=${dataSource}`);
     }catch(e){console.warn("[WK] poll error:",e)}
     finally{pollRunning=false}
   },POLL_MS);
