@@ -10,16 +10,16 @@ const POLL_MS=3000;
 
 const DISTANCES={
   v:[
-    {key:"d1_500",label:"1st 500m",meters:500,divisor:1,compId:null},
-    {key:"d1_1000",label:"1st 1000m",meters:1000,divisor:2,compId:null},
-    {key:"d2_500",label:"2nd 500m",meters:500,divisor:1,compId:null},
-    {key:"d2_1000",label:"2nd 1000m",meters:1000,divisor:2,compId:null},
+    {key:"d1_500",label:"1st 500m",meters:500,divisor:1,compId:1},
+    {key:"d1_1000",label:"1st 1000m",meters:1000,divisor:2,compId:3},
+    {key:"d2_500",label:"2nd 500m",meters:500,divisor:1,compId:5},
+    {key:"d2_1000",label:"2nd 1000m",meters:1000,divisor:2,compId:7},
   ],
   m:[
-    {key:"d1_500",label:"1st 500m",meters:500,divisor:1,compId:null},
-    {key:"d1_1000",label:"1st 1000m",meters:1000,divisor:2,compId:null},
-    {key:"d2_500",label:"2nd 500m",meters:500,divisor:1,compId:null},
-    {key:"d2_1000",label:"2nd 1000m",meters:1000,divisor:2,compId:null},
+    {key:"d1_500",label:"1st 500m",meters:500,divisor:1,compId:2},
+    {key:"d1_1000",label:"1st 1000m",meters:1000,divisor:2,compId:4},
+    {key:"d2_500",label:"2nd 500m",meters:500,divisor:1,compId:6},
+    {key:"d2_1000",label:"2nd 1000m",meters:1000,divisor:2,compId:8},
   ],
 };
 
