@@ -260,9 +260,13 @@ function parseTextResults(text,g,distKey){
   if(!text)return[];
   const results=[],lines=text.split(/\n/);
   const timeRe=/(\d{1,2}:\d{2}[\.,]\d{2,3}|\d{2,3}[\.,]\d{2,3})/;
-  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu)/i;
+  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu|Referee|Starter|Assistant|Judge|Doctor|Announcer|©)/i;
+  const recLine=/^\s*\*?\s*(WR|TR|NR|SR)\s+/i;
   for(const line of lines){
     if(junk.test(line.trim()))continue;
+    if(recLine.test(line.trim()))continue;
+    if(/\d{4}-\d{2}-\d{2}/.test(line))continue;
+    if(/\b(Referee|Starter|Assistant|Judge|Doctor|Announcer)\b/i.test(line))continue;
     const m=line.match(timeRe);
     if(!m)continue;
     const rawTime=m[1].replace(",",".");
@@ -294,11 +298,16 @@ function parseTextStartList(text){
   const list=[],lines=text.split(/\n/);
   if(lines.length>5)console.log("[WK] SL text sample lines:",lines.slice(3,8));
   // Jina garbage patterns to skip
-  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu)/i;
+  const junk=/^(ISU|URL|Markdown|Source|Content|Title|Speed Skating|World Championships|Start List|Lap Times|Results|Live|Competition|Event|Schedule|http|www\.|\.com|\.eu|Referee|Starter|Assistant|Judge|Doctor|Announcer|Timer|Photo|Media|Press|©|\d{4}-\d{2}-\d{2}|🕐|⏱|Mar\s|Feb\s|Jan\s|Apr\s|May\s|Jun\s|Jul\s|Aug\s|Sep\s|Oct\s|Nov\s|Dec\s|\d{1,2}:\d{2}\s*-\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))/i;
+  // WR/TR record holder lines (e.g. "WR Femke Kok 36.09 2025-11-16")
+  const recLine=/^\s*\*?\s*(WR|TR|NR|SR)\s+/i;
   for(const line of lines){
     const clean=cleanJinaName(line);
     if(!clean||clean.length<3)continue;
     if(junk.test(clean.trim()))continue;
+    if(recLine.test(line.trim()))continue;
+    // Skip lines with dates like "2025-11-16" or "Mar 5, 2026"
+    if(/\d{4}-\d{2}-\d{2}/.test(line))continue;
     if(/^(pair|lane|name|time|behind|rank|no\b)/i.test(clean.trim()))continue;
     // Must look like a person name: at least 2 words, first word capitalized, no special keywords
     const nm=clean.match(/([A-Z][a-zA-Z\u00C0-\u017F\'-]+(?:\s+[A-Za-z\u00C0-\u017F\'-]+)+)/);
@@ -306,7 +315,9 @@ function parseTextStartList(text){
     const name=nm[1].trim();
     if(name.length<4)continue;
     // Reject common non-name patterns
-    if(/^(Pair|Lane|Name|Time|Behind|Rank|Speed|Skating|World|Championship|Start|List|Lap|Result|Live|Competition|Event|Schedule|Markdown|Content|Source|URL|ISU)/i.test(name))continue;
+    if(/^(Pair|Lane|Name|Time|Behind|Rank|Speed|Skating|World|Championship|Start|List|Lap|Result|Live|Competition|Event|Schedule|Markdown|Content|Source|URL|ISU|Referee|Starter|Assistant|Judge|Doctor|Announcer|Timer|Photo|Media|Press)/i.test(name))continue;
+    // Reject if original line contains a role prefix (Referee: Name, Starter: Name)
+    if(/\b(Referee|Starter|Assistant|Judge|Doctor|Announcer)\b/i.test(line))continue;
     // Reject if name contains too many lowercase-starting words (likely a sentence)
     const words=name.split(/\s+/);
     if(words.length>4)continue;
