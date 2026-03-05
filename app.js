@@ -23,85 +23,6 @@ const DISTANCES={
   ],
 };
 
-// ── AUTO-DISCOVER COMPETITION IDS ──────────────────────
-async function discoverCompIds(){
-  console.log("[WK] Discovering competition IDs...");
-  let comps=null;
-  const url=`${API_BASE}/`;
-  // Try direct
-  try{const r=await fetch(url,{cache:"no-store"});if(r.ok)comps=await r.json()}catch(_){}
-  // Try allorigins
-  if(!comps)try{const r=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);if(r.ok){const w=await r.json();if(w.contents)comps=JSON.parse(w.contents)}}catch(_){}
-  // Try corsproxy
-  if(!comps)try{const r=await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);if(r.ok)comps=await r.json()}catch(_){}
-
-  if(!comps){console.warn("[WK] Could not discover compIds, using fallback");return false}
-  if(!Array.isArray(comps))comps=comps.competitions||comps.results||[];
-  console.log("[WK] Found competitions:",comps.length,comps.map(c=>`${c.id}:${c.name||c.title||"?"}`));
-
-  // Match competitions to our DISTANCES by name patterns
-  const patterns={
-    v:{
-      d1_500:[/ladies.*1st.*500|women.*1st.*500|500.*women.*1|500.*ladies.*1|1st.*500.*ladies|1st.*500.*women/i,/ladies.*500.*sprint.*1|women.*500.*sprint.*1/i],
-      d1_1000:[/ladies.*1st.*1000|women.*1st.*1000|1000.*women.*1|1000.*ladies.*1|1st.*1000.*ladies|1st.*1000.*women/i,/ladies.*1000.*sprint.*1|women.*1000.*sprint.*1/i],
-      d2_500:[/ladies.*2nd.*500|women.*2nd.*500|500.*women.*2|500.*ladies.*2|2nd.*500.*ladies|2nd.*500.*women/i,/ladies.*500.*sprint.*2|women.*500.*sprint.*2/i],
-      d2_1000:[/ladies.*2nd.*1000|women.*2nd.*1000|1000.*women.*2|1000.*ladies.*2|2nd.*1000.*ladies|2nd.*1000.*women/i,/ladies.*1000.*sprint.*2|women.*1000.*sprint.*2/i],
-    },
-    m:{
-      d1_500:[/men.*1st.*500|500.*men.*1|1st.*500.*men/i,/men.*500.*sprint.*1/i],
-      d1_1000:[/men.*1st.*1000|1000.*men.*1|1st.*1000.*men/i,/men.*1000.*sprint.*1/i],
-      d2_500:[/men.*2nd.*500|500.*men.*2|2nd.*500.*men/i,/men.*500.*sprint.*2/i],
-      d2_1000:[/men.*2nd.*1000|1000.*men.*2|2nd.*1000.*men/i,/men.*1000.*sprint.*2/i],
-    }
-  };
-
-  // Also try simpler approach: sort by ID and assign in order
-  // ISU typically orders: Ladies 500-1, Men 500-1, Ladies 1000-1, Men 1000-1, Ladies 500-2, Men 500-2, Ladies 1000-2, Men 1000-2
-  let matched=0;
-  for(const g of["v","m"]){
-    for(const d of DISTANCES[g]){
-      const pats=patterns[g][d.key];
-      if(!pats)continue;
-      for(const c of comps){
-        const name=c.name||c.title||c.description||"";
-        if(pats.some(p=>p.test(name))){
-          d.compId=c.id;
-          console.log(`[WK] ${g}/${d.key} → compId ${c.id} (${name})`);
-          matched++;
-          break;
-        }
-      }
-    }
-  }
-
-  // Fallback: if no pattern matched, try order-based assignment
-  if(matched===0&&comps.length>=8){
-    console.log("[WK] Pattern matching failed, trying order-based assignment...");
-    // Sort by id
-    const sorted=[...comps].sort((a,b)=>(a.id||0)-(b.id||0));
-    // Log all for debugging
-    sorted.forEach((c,i)=>console.log(`  [${i}] id=${c.id} name="${c.name||c.title||"?"}"`));
-    // Sprint order: typically alternating ladies/men per distance
-    // Try to detect gender from name
-    const ladies=sorted.filter(c=>/ladies|women|dames/i.test(c.name||c.title||""));
-    const men=sorted.filter(c=>/\bmen\b|heren/i.test(c.name||c.title||""));
-    if(ladies.length>=4&&men.length>=4){
-      [DISTANCES.v[0],DISTANCES.v[1],DISTANCES.v[2],DISTANCES.v[3]].forEach((d,i)=>{if(ladies[i])d.compId=ladies[i].id});
-      [DISTANCES.m[0],DISTANCES.m[1],DISTANCES.m[2],DISTANCES.m[3]].forEach((d,i)=>{if(men[i])d.compId=men[i].id});
-      console.log("[WK] Assigned by gender groups");
-    }else{
-      // Last resort: just assign first 8 in order
-      const ids=sorted.map(c=>c.id);
-      const assign=[[0,"v",0],[1,"m",0],[2,"v",1],[3,"m",1],[4,"v",2],[5,"m",2],[6,"v",3],[7,"m",3]];
-      assign.forEach(([idx,g,di])=>{if(ids[idx]!=null)DISTANCES[g][di].compId=ids[idx]});
-      console.log("[WK] Assigned by order (fallback)");
-    }
-  }
-
-  // Log final mapping
-  for(const g of["v","m"])for(const d of DISTANCES[g])console.log(`[WK] Final: ${g}/${d.key} = compId ${d.compId}`);
-  return DISTANCES.v.some(d=>d.compId!=null);
-}
 
 // ── UTILS ───────────────────────────────────────────────
 function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
@@ -1073,8 +994,6 @@ async function boot(){
   try{
     cacheEls();loadInactive();render();
     // Step 1: discover correct competition IDs for this event
-    const found=await discoverCompIds();
-    if(!found)console.warn("[WK] No compIds discovered — will retry on poll");
     bindEvents();render();
     // Step 2: fetch data
     await fetchGender(state.gender);
