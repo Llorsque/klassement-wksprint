@@ -6,7 +6,7 @@ const EVENT_ID="2026_NED_0002";
 const API_BASE=`https://api.isuresults.eu/events/${EVENT_ID}/competitions`;
 const JINA="https://r.jina.ai/";
 const LIVE_BASE=`https://live.isuresults.eu/events/${EVENT_ID}/competition`;
-const POLL_MS=3000;
+const POLL_MS=5000;
 
 const DISTANCES={
   v:[
@@ -365,37 +365,33 @@ function parseTextStartList(text){
   return assignPairs(list);
 }
 
-async function fetchGender(g,onlyDist){
+async function fetchGender(g,onlyDist,pollOnly=false){
   const ds=DISTANCES[g];
   const toFetch=(onlyDist?ds.filter(d=>d.key===onlyDist):ds).filter(d=>d.compId!=null);
   if(!toFetch.length){console.warn(`[WK] No compIds for ${g}, skipping fetch`);return}
 
-  if(onlyDist){
-    const d=toFetch[0];
+  // Fetch results for each distance
+  for(const d of toFetch){
     const raw=await fetchJSON(d.compId,"results");
     const results=parseAPIResults(raw,g,d.key);
-    if(results.length>0)dataCache[g][d.key]=results;
-    if(!startListCache[g][d.key]?.length){
-      const slRaw=await fetchJSON(d.compId,"start-list");
-      const sl=parseAPIStartList(slRaw);
-      if(sl.length>0){startListCache[g][d.key]=sl;for(const s of sl)if(s.pb)storePB(g,d.key,s.name,s.pb)}
+    if(results.length>0){
+      dataCache[g][d.key]=results;
+      console.log(`[WK] ${g}/${d.key}: ${results.length} results`);
     }
-  }else{
-    // Sequential per distance to avoid 429 rate limits on proxies
-    // Fast because globalBestProxy skips dead methods
+    // Progressive render after each distance
+    if(!onlyDist){computeStandings();render()}
+  }
+
+  // Start-lists: only on initial load, not during polling
+  if(!pollOnly){
     for(const d of toFetch){
-      const raw=await fetchJSON(d.compId,"results");
-      const results=parseAPIResults(raw,g,d.key);
-      if(results.length>0)dataCache[g][d.key]=results;
-      computeStandings();render();// Progressive: show each distance as it arrives
-    }
-    // Start-lists after all results (lower priority)
-    for(const d of toFetch){
+      if(startListCache[g][d.key]?.length)continue;// already cached
       const slRaw=await fetchJSON(d.compId,"start-list");
       const sl=parseAPIStartList(slRaw);
       if(sl.length>0){startListCache[g][d.key]=sl;for(const s of sl)if(s.pb)storePB(g,d.key,s.name,s.pb)}
     }
   }
+
   const pbCount=Object.values(pbCache[g]).reduce((sum,d)=>sum+Object.keys(d).length,0);
   if(pbCount>0)console.log(`[WK] PB cache ${g}: ${pbCount} entries`);
   lastFetch[g]=new Date();
@@ -951,17 +947,22 @@ function bindEvents(){
 }
 
 // ── POLL ────────────────────────────────────────────────
-let pollT=null,lastDataHash="";
-function dataHash(){try{return JSON.stringify(dataCache[state.gender]??"").length.toString()}catch(_){return""}}
-function startPoll(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{try{
-  lastDataHash=dataHash();
-  const dk=state.pollDist==="all"?undefined:state.pollDist;
-  await fetchGender(state.gender,dk);
-  if(dataHash()!==lastDataHash){
-    // Always re-render overview and distance views; skip frozen klassement view
-    if(state.view!=="klassement")render();
-  }
-}catch(e){console.warn("[WK] poll:",e)}},POLL_MS)}
+let pollT=null,pollRunning=false;
+function startPoll(){
+  if(pollT)clearInterval(pollT);
+  pollT=setInterval(async()=>{
+    if(pollRunning)return;// skip if previous poll still running
+    pollRunning=true;
+    try{
+      const dk=state.pollDist==="all"?undefined:state.pollDist;
+      console.log(`[WK] Poll ${dk||"all"}...`);
+      await fetchGender(state.gender,dk,true);// pollOnly=true: skip start-lists
+      render();
+      console.log(`[WK] Poll done, source=${dataSource}`);
+    }catch(e){console.warn("[WK] poll error:",e)}
+    finally{pollRunning=false}
+  },POLL_MS);
+}
 
 // ── BOOT ────────────────────────────────────────────────
 async function boot(){
