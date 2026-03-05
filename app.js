@@ -89,7 +89,7 @@ async function fetchJSON(compId,type="results"){
   const apiUrl=`${API_BASE}/${compId}/${type}/`;
 
   async function tryCorsproxy(){
-    const r=await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,{cache:"no-store"});
+    const r=await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(apiUrl+'?_='+cb)}`,{cache:"no-store"});
     if(!r?.ok)return null;
     const d=await r.json();
     const arr=Array.isArray(d)?d:(d?.results??d?.data??[]);
