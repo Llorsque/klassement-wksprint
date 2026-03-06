@@ -758,14 +758,30 @@ function fillTile3NextPair(dist){
     </table>
     <div class="np-cards">
       <div class="np-cards__section">
-        <div class="np-cards__label">🎯 Tijd voor P1 op ${esc(dist.label)}</div>
+        <div class="np-cards__label">🎯 ${allDone?"Klassement na rit":"Tijd voor P1 op "+esc(dist.label)}</div>
         <div class="np-cards__pair">
-          <div class="np-card ${isLeaderA?"np-card--green":"np-card--ttl"}">${isLeaderA?'<div class="np-card__time">LEADER</div>':
-            Number.isFinite(targetA)?`<div class="np-card__time">${fmtTime(targetA)}</div>`:
-            '<div class="np-card__time">—</div>'}</div>
-          <div class="np-card ${isLeaderB?"np-card--green":"np-card--ttl"}">${isLeaderB?'<div class="np-card__time">LEADER</div>':
-            Number.isFinite(targetB)?`<div class="np-card__time">${fmtTime(targetB)}</div>`:
-            '<div class="np-card__time">—</div>'}</div>
+          ${(()=>{
+            const doneA=Number.isFinite(rA.seconds[dist.key]);
+            const doneB=Number.isFinite(rB.seconds[dist.key]);
+            const rkClsA=rA.rank===1?"np-card--green":rA.rank<=3?"np-card--ttl":"np-card--ttl";
+            const rkClsB=rB.rank===1?"np-card--green":rB.rank<=3?"np-card--ttl":"np-card--ttl";
+            let cardA,cardB;
+            if(doneA){
+              cardA=`<div class="np-card ${rA.rank===1?"np-card--green":"np-card--ttl"}"><div class="np-card__time">#${rA.rank}</div></div>`;
+            }else if(isLeaderA){
+              cardA=`<div class="np-card np-card--green"><div class="np-card__time">LEADER</div></div>`;
+            }else{
+              cardA=`<div class="np-card np-card--ttl"><div class="np-card__time">${Number.isFinite(targetA)?fmtTime(targetA):"—"}</div></div>`;
+            }
+            if(doneB){
+              cardB=`<div class="np-card ${rB.rank===1?"np-card--green":"np-card--ttl"}"><div class="np-card__time">#${rB.rank}</div></div>`;
+            }else if(isLeaderB){
+              cardB=`<div class="np-card np-card--green"><div class="np-card__time">LEADER</div></div>`;
+            }else{
+              cardB=`<div class="np-card np-card--ttl"><div class="np-card__time">${Number.isFinite(targetB)?fmtTime(targetB):"—"}</div></div>`;
+            }
+            return cardA+cardB;
+          })()}
         </div>
       </div>
       <div class="np-cards__section">
