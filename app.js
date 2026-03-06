@@ -30,8 +30,8 @@ function parseTime(raw){if(!raw||typeof raw!=="string")return null;const s=raw.t
 function fmtTime(sec){if(!Number.isFinite(sec)||sec<=0)return"—";const m=Math.floor(sec/60),s=sec-m*60;const str=s.toFixed(2).padStart(5,"0").replace(".",",");return m>0?`${m}:${str}`:`${str}`}
 function fmtDelta(sec){if(!Number.isFinite(sec))return"—";const r=Math.round(sec*100)/100;const sign=r<0?"−":"+",abs=Math.abs(r);const m=Math.floor(abs/60);const s2=(abs-m*60).toFixed(2).replace(".",",");return m>0?`${sign}${m}:${s2.padStart(5,"0")}`:`${sign}${s2}`}
 function fmtPts(p){return Number.isFinite(p)?p.toFixed(3):"—"}
-function trunc3(n){return Math.floor(n*1000)/1000}
-function trunc2(n){return Math.floor(n*100)/100}
+function trunc3(n){return Math.floor(n*1000+0.0001)/1000}
+function trunc2(n){return Math.round(n*100)/100}
 function medal(r){return{1:"🥇",2:"🥈",3:"🥉"}[r]??""}
 function podCls(r){return r>=1&&r<=3?` row--${["","gold","silver","bronze"][r]}`:"";}
 function shortName(name){const p=(name??"").split(" ");return p.length>1?p[p.length-1]:name}
@@ -165,7 +165,7 @@ function parseAPIResults(raw,g,distKey){
     if(!rec&&r.isPersonalBest===true)rec="PB";
     return{name,country:sk.country||"",rank:r.rank,
       no:r.competitor.number||r.startNumber||0,
-      time:r.time,seconds:trunc2(parseTime(r.time)),timeBehind:r.timeBehind||"",
+      time:r.time,seconds:parseTime(r.time),timeBehind:r.timeBehind||"",
       startLane:r.startLane||r.competitor?.startLane||"",record:rec,
       laps:r.laps||[]};
   }).filter(r=>r.seconds!=null&&r.seconds>0);
@@ -315,7 +315,7 @@ function parseTextResults(text,g,distKey){
     if(words.length>4)continue;
     const behindMatch=after.match(/\+(\d{1,2}[:\.]?\d{2}[\.,]\d{2,3}|\d+[\.,]\d{2,3})/);
     const behind=behindMatch?behindMatch[0]:"";
-    results.push({name:cleanName(nameStr),country:cc,time:rawTime,seconds:trunc2(sec),rank:results.length+1,no:0,timeBehind:behind,startLane:"",record:rec,laps:[]});
+    results.push({name:cleanName(nameStr),country:cc,time:rawTime,seconds:sec,rank:results.length+1,no:0,timeBehind:behind,startLane:"",record:rec,laps:[]});
   }
   const seen=new Set(),deduped=[];
   for(const r of results){const k=r.name+"|"+r.seconds;if(!seen.has(k)){seen.add(k);deduped.push(r)}}
@@ -639,13 +639,14 @@ function fillTile3NextPair(dist){
   const lPts=standings?.leader?.currentPoints;
   const leaderName=standings?.leader?shortName(standings.leader.name):"P1";
 
-  // Time-to-lead for each rider
-  // For non-leaders: time needed to match P1
-  // For leaders: max time they can ride and still lead (= time to match P2)
-  const p2Pts=standings?.ranked?.[1]?.currentPoints;
+  // Time to lead: points gap × divisor = time equivalent on this distance
+  // Positive = rider is behind (needs to ride this much faster than leader)
+  // Zero/negative = rider IS the leader
+  const gapA=Number.isFinite(pA)&&Number.isFinite(lPts)?pA-lPts:null;
+  const gapB=Number.isFinite(pB)&&Number.isFinite(lPts)?pB-lPts:null;
+  const ttlA=Number.isFinite(gapA)?gapA*dist.divisor:null;
+  const ttlB=Number.isFinite(gapB)?gapB*dist.divisor:null;
   const isLeaderA=rA.rank===1,isLeaderB=rB.rank===1;
-  const ttlA=isLeaderA?neededTime(rA,dist.key,p2Pts):neededTime(rA,dist.key,lPts);
-  const ttlB=isLeaderB?neededTime(rB,dist.key,p2Pts):neededTime(rB,dist.key,lPts);
 
   // Mutual difference in points → time on this distance
   const ptsDiff=Number.isFinite(pA)&&Number.isFinite(pB)?pA-pB:null;
@@ -699,10 +700,12 @@ function fillTile3NextPair(dist){
     </table>
     <div class="np-cards">
       <div class="np-cards__section">
-        <div class="np-cards__label">🎯 Time to lead${isLeaderA||isLeaderB?" · <span style='font-weight:400;opacity:.7'>leader = max tijd voor P1</span>":""}</div>
+        <div class="np-cards__label">🎯 Time to lead · <span style='font-weight:400;opacity:.7'>achterstand op P1 in tijd</span></div>
         <div class="np-cards__pair">
-          <div class="np-card np-card--ttl">${isLeaderA?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div>':""}<div class="np-card__time">${Number.isFinite(ttlA)&&ttlA>0?fmtTime(ttlA):"—"}</div></div>
-          <div class="np-card np-card--ttl">${isLeaderB?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div>':""}<div class="np-card__time">${Number.isFinite(ttlB)&&ttlB>0?fmtTime(ttlB):"—"}</div></div>
+          <div class="np-card np-card--ttl">${isLeaderA?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div><div class="np-card__time">—</div>':
+            `<div class="np-card__time">${Number.isFinite(ttlA)&&ttlA>0.005?fmtTime(ttlA):"—"}</div>`}</div>
+          <div class="np-card np-card--ttl">${isLeaderB?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div><div class="np-card__time">—</div>':
+            `<div class="np-card__time">${Number.isFinite(ttlB)&&ttlB>0.005?fmtTime(ttlB):"—"}</div>`}</div>
         </div>
       </div>
       <div class="np-cards__section">
