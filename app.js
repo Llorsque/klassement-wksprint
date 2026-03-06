@@ -60,7 +60,7 @@ function getPBraw(g,name,distKey){
 }
 
 // ── STATE ───────────────────────────────────────────────
-const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all",tile3Mode:"startlist"};
+const state={gender:"v",view:"overview",selectedDist:"d1_500",pollDist:"all",tile3Mode:"startlist",npPair:null};
 const dataCache={v:{},m:{}};
 const startListCache={v:{},m:{}};
 const pbCache={v:{},m:{}}; // {gender: {distKey: {normalizedName: timeString}}}
@@ -421,7 +421,7 @@ function computeStandings(){
   const parts=buildParticipants(g);
   const athletes=parts.map(p=>{
     const a={name:p.name,country:p.country,active:isActive(p.name),times:{},seconds:{},points:{},distRanks:{}};
-    for(const d of ds){const r=(dataCache[g][d.key]??[]).find(x=>x.name===p.name);if(r){a.times[d.key]=r.time;a.seconds[d.key]=r.seconds;a.points[d.key]=trunc3(Math.round(r.seconds*100)/100/d.divisor)}}
+    for(const d of ds){const r=(dataCache[g][d.key]??[]).find(x=>x.name===p.name);if(r){a.times[d.key]=r.time;a.seconds[d.key]=r.seconds;a.points[d.key]=trunc3(Math.floor(r.seconds*100+0.001)/100/d.divisor)}}
     return a;
   });
   for(const d of ds){const s=athletes.filter(a=>Number.isFinite(a.seconds[d.key])).sort((x,y)=>x.seconds[d.key]-y.seconds[d.key]);s.forEach((a,i)=>a.distRanks[d.key]=i+1)}
@@ -519,8 +519,8 @@ function renderOverview(){
         <div class="tile-body" id="tile4Body"></div>
       </div>
     </div>`;
-  document.getElementById("distSel")?.addEventListener("change",e=>{state.selectedDist=e.target.value;render()});
-  document.querySelectorAll("[data-t3mode]").forEach(b=>b.addEventListener("click",e=>{state.tile3Mode=e.target.dataset.t3mode;render()}));
+  document.getElementById("distSel")?.addEventListener("change",e=>{state.selectedDist=e.target.value;state.npPair=null;render()});
+  document.querySelectorAll("[data-t3mode]").forEach(b=>b.addEventListener("click",e=>{state.tile3Mode=e.target.dataset.t3mode;state.npPair=null;render()}));
   fillTile1(selDist);fillTile2();
   if(state.tile3Mode==="nextpair")fillTile3NextPair(selDist);else fillTile3(selDist);
   fillTile4(nextDist);
@@ -580,33 +580,73 @@ function fillTile3(dist){
   body.innerHTML=`<table class="tbl tbl--compact"><thead><tr><th>Rit</th><th></th><th>Name</th><th style="color:var(--orange)">PB</th><th>Target P1</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/** Get all pair numbers for a distance */
+function getAllPairs(dist){
+  const sl=startListCache[state.gender][dist.key]??[];
+  const pairs=new Map();
+  for(const s of sl){const pn=s.pairNumber||0;if(!pairs.has(pn))pairs.set(pn,[]);pairs.get(pn).push(s)}
+  return pairs;
+}
+
+/** Get a specific pair by number */
+function getPairByNum(dist,num){
+  const pairs=getAllPairs(dist);
+  const results=dataCache[state.gender][dist.key]??[];
+  const resultNames=new Set(results.map(r=>r.name));
+  if(!pairs.has(num))return null;
+  const skaters=pairs.get(num);
+  const allDone=skaters.every(s=>resultNames.has(s.name));
+  return{pairNum:num,skaters,allDone,totalPairs:pairs.size};
+}
+
 /** Find the first pair on this distance where not all riders have results yet */
 function getNextPair(dist){
   const g=state.gender;
   const sl=startListCache[g][dist.key]??[];
   const results=dataCache[g][dist.key]??[];
   const resultNames=new Set(results.map(r=>r.name));
-  // Group by pair
   const pairs=new Map();
   for(const s of sl){const pn=s.pairNumber||0;if(!pairs.has(pn))pairs.set(pn,[]);pairs.get(pn).push(s)}
-  // Find first pair where at least one rider has no result
+  const total=pairs.size;
   for(const[pn,skaters]of pairs){
     const allDone=skaters.every(s=>resultNames.has(s.name));
-    if(!allDone)return{pairNum:pn,skaters};
+    if(!allDone)return{pairNum:pn,skaters,totalPairs:total};
   }
-  // All done: return last pair
-  if(pairs.size>0){const last=[...pairs.entries()].pop();return{pairNum:last[0],skaters:last[1],allDone:true}}
+  if(pairs.size>0){const last=[...pairs.entries()].pop();return{pairNum:last[0],skaters:last[1],allDone:true,totalPairs:total}}
   return null;
 }
 
 function fillTile3NextPair(dist){
   const body=document.getElementById("tile3Body");if(!body)return;
   const g=state.gender;
-  const next=getNextPair(dist);
-  if(!next||!next.skaters.length){
+
+  // Determine which pair to show: manual override or auto
+  const autoNext=getNextPair(dist);
+  const totalPairs=autoNext?.totalPairs||getAllPairs(dist).size;
+  let pair;
+  if(state.npPair!=null){
+    pair=getPairByNum(dist,state.npPair);
+    if(!pair)pair=autoNext;// fallback if manual pair doesn't exist
+  }else{
+    pair=autoNext;
+  }
+
+  if(!pair||!pair.skaters.length){
     body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-muted)">No start list available</div>`;return;
   }
-  const{pairNum,skaters,allDone}=next;
+  const{pairNum,skaters,allDone}=pair;
+  const isAuto=state.npPair==null;
+  // Auto-advance: if auto mode and pair is done, check if next pair exists
+  if(isAuto&&allDone&&autoNext&&!autoNext.allDone){
+    // auto already points to next unfinished
+  }
+
+  // Navigation HTML
+  const navHtml=`<div class="np-nav">
+    <button class="np-nav__btn" id="npPrev" ${pairNum<=1?"disabled":""}>◀</button>
+    <button class="np-nav__auto ${isAuto?"np-nav__auto--active":""}" id="npAuto">Auto</button>
+    <button class="np-nav__btn" id="npNext" ${pairNum>=totalPairs?"disabled":""}>▶</button>
+  </div>`;
   const ds=getDists();
 
   // Solo pair
@@ -617,7 +657,10 @@ function fillTile3NextPair(dist){
     const nt=a?neededTime(a,dist.key,lPts):null;
     const ntStr=Number.isFinite(nt)&&nt>0?fmtTime(nt):"";
     body.innerHTML=`<div style="padding:16px">
-      <div style="font-size:1rem;font-weight:700;margin-bottom:8px">Rit ${pairNum} — Solo${allDone?' <span style="color:var(--green)">✓ Finished</span>':""}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:1rem;font-weight:700">Rit ${pairNum} — Solo${allDone?' <span style="color:var(--green)">✓ Finished</span>':""}</span>
+        ${navHtml}
+      </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">${laneDot(s.startLane)} <span class="athlete" data-name="${esc(s.name)}" style="font-size:1rem;font-weight:600">${esc(s.name)}</span> <span class="country">${esc(s.country)}</span></div>
       ${a?`<div class="stat-grid" style="margin-bottom:8px">
         <div class="stat-box"><div class="stat-box__label">Rank</div><div class="stat-box__value">#${a.rank??"—"}</div></div>
@@ -625,6 +668,7 @@ function fillTile3NextPair(dist){
         <div class="stat-box"><div class="stat-box__label">Target P1</div><div class="stat-box__value">${ntStr||"—"}</div></div>
       </div>`:""}
     </div>`;
+    bindNpNav(dist,totalPairs);
     return;
   }
 
@@ -686,7 +730,8 @@ function fillTile3NextPair(dist){
 
   body.innerHTML=`<div class="np-wrap">
     <div class="np-header">
-      <span style="font-size:0.92rem;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:0.78rem">✓ All done</span>':""}</span>
+      <span style="font-size:0.92rem;font-weight:700">Rit ${pairNum}${allDone?' <span style="color:var(--green);font-size:0.78rem">✓ All done</span>':""}${!isAuto?' <span style="color:var(--orange);font-size:0.64rem">MANUAL</span>':""}</span>
+      ${navHtml}
     </div>
     <div class="np-names">
       <div class="np-namebox np-namebox--left"><span class="lane-dot lane-dot--inner" title="Inner"></span><span class="np-namebox__name athlete" data-name="${esc(rA.name)}">${esc(nameA)}</span><span class="np-namebox__rank">#${rA.rank??"—"}</span></div>
@@ -717,6 +762,22 @@ function fillTile3NextPair(dist){
       </div>
     </div>
   </div>`;
+  // Bind navigation buttons
+  bindNpNav(dist,totalPairs);
+}
+
+function bindNpNav(dist,totalPairs){
+  document.getElementById("npPrev")?.addEventListener("click",()=>{
+    const cur=state.npPair??getNextPair(dist)?.pairNum??1;
+    if(cur>1){state.npPair=cur-1;render()}
+  });
+  document.getElementById("npNext")?.addEventListener("click",()=>{
+    const cur=state.npPair??getNextPair(dist)?.pairNum??1;
+    if(cur<totalPairs){state.npPair=cur+1;render()}
+  });
+  document.getElementById("npAuto")?.addEventListener("click",()=>{
+    state.npPair=null;render();
+  });
 }
 
 function fillTile4(nextDist){
@@ -764,7 +825,7 @@ function renderDistance(dKey){
     const badge=recordBadge(r.record);
     const pb=getPB(r.name,dist.key);
     const pbStr=pb?`<span style="color:var(--orange)">${pb}</span>`:"";
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono" style="color:var(--orange)">${pbStr}</td><td class="mono">${fmtPts(trunc3(Math.round(r.seconds*100)/100/dist.divisor))}</td><td>${dStr}</td></tr>`;
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono" style="color:var(--orange)">${pbStr}</td><td class="mono">${fmtPts(trunc3(Math.floor(r.seconds*100+0.001)/100/dist.divisor))}</td><td>${dStr}</td></tr>`;
   }).join("");
 
   // Sidebar standings
@@ -946,7 +1007,7 @@ function bindEvents(){
 
   el.genderTabs?.addEventListener("click",async e=>{
     const b=e.target.closest(".tab");if(!b?.dataset.gender)return;
-    state.gender=b.dataset.gender;fillPollSelect();render();
+    state.gender=b.dataset.gender;state.npPair=null;fillPollSelect();render();
     if(!Object.keys(dataCache[state.gender]).length){await fetchGender(state.gender);render()}
   });
 
