@@ -683,13 +683,18 @@ function fillTile3NextPair(dist){
   const lPts=standings?.leader?.currentPoints;
   const leaderName=standings?.leader?shortName(standings.leader.name):"P1";
 
-  // Time to lead: points gap × divisor = time equivalent on this distance
-  // Positive = rider is behind (needs to ride this much faster than leader)
-  // Zero/negative = rider IS the leader
+  // Time to lead: calculate the actual time the rider needs to ride
+  // = leader's time on this distance − (gap in points × divisor)
+  const leader=standings?.leader;
+  const leaderTime=leader?leader.seconds[dist.key]:null;// leader's time on selected distance
   const gapA=Number.isFinite(pA)&&Number.isFinite(lPts)?pA-lPts:null;
   const gapB=Number.isFinite(pB)&&Number.isFinite(lPts)?pB-lPts:null;
-  const ttlA=Number.isFinite(gapA)?gapA*dist.divisor:null;
-  const ttlB=Number.isFinite(gapB)?gapB*dist.divisor:null;
+  const gapTimeA=Number.isFinite(gapA)?gapA*dist.divisor:null;
+  const gapTimeB=Number.isFinite(gapB)?gapB*dist.divisor:null;
+  // Target time = leader's time on this distance − gap in seconds
+  // If leader hasn't ridden yet, show gap only
+  const targetA=Number.isFinite(leaderTime)&&Number.isFinite(gapTimeA)?leaderTime-gapTimeA:null;
+  const targetB=Number.isFinite(leaderTime)&&Number.isFinite(gapTimeB)?leaderTime-gapTimeB:null;
   const isLeaderA=rA.rank===1,isLeaderB=rB.rank===1;
 
   // Mutual difference in points → time on this distance
@@ -719,12 +724,16 @@ function fillTile3NextPair(dist){
   }).join("");
 
   // Format mutual: returns {cls, text} for the card
+  // mutualTimeDiff = (pA - pB) * divisor
+  // For rider A: adv = (pB - pA) * divisor → positive = A ahead, negative = A behind
   function mutualCard(forA){
     if(!Number.isFinite(mutualTimeDiff))return{cls:"np-card--neutral",text:"—"};
     const adv=forA?-mutualTimeDiff:mutualTimeDiff;
+    // adv > 0: this rider has fewer points = AHEAD = green with −
+    // adv < 0: this rider has more points = BEHIND = red with +
     if(Math.abs(adv)<0.005)return{cls:"np-card--neutral",text:"Even"};
-    if(adv<0)return{cls:"np-card--green",text:`−${fmtTime(Math.abs(adv))}`};
-    return{cls:"np-card--red",text:`+${fmtTime(adv)}`};
+    if(adv>0)return{cls:"np-card--green",text:`−${fmtTime(adv)}`};
+    return{cls:"np-card--red",text:`+${fmtTime(Math.abs(adv))}`};
   }
   const mA=mutualCard(true),mB=mutualCard(false);
 
@@ -745,12 +754,16 @@ function fillTile3NextPair(dist){
     </table>
     <div class="np-cards">
       <div class="np-cards__section">
-        <div class="np-cards__label">🎯 Time to lead · <span style='font-weight:400;opacity:.7'>achterstand op P1 in tijd</span></div>
+        <div class="np-cards__label">🎯 Tijd voor P1 op ${esc(dist.label)}</div>
         <div class="np-cards__pair">
-          <div class="np-card np-card--ttl">${isLeaderA?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div><div class="np-card__time">—</div>':
-            `<div class="np-card__time">${Number.isFinite(ttlA)&&ttlA>0.005?fmtTime(ttlA):"—"}</div>`}</div>
-          <div class="np-card np-card--ttl">${isLeaderB?'<div style="color:var(--green);font-size:0.64rem;font-weight:700">LEADER</div><div class="np-card__time">—</div>':
-            `<div class="np-card__time">${Number.isFinite(ttlB)&&ttlB>0.005?fmtTime(ttlB):"—"}</div>`}</div>
+          <div class="np-card ${isLeaderA?"np-card--green":"np-card--ttl"}">${isLeaderA?'<div class="np-card__time">LEADER</div>':
+            Number.isFinite(targetA)&&targetA>0?`<div class="np-card__time">${fmtTime(targetA)}</div>`:
+            Number.isFinite(gapTimeA)&&gapTimeA>0.005?`<div style="font-size:0.64rem;color:var(--text-dim)">achterstand</div><div class="np-card__time">${fmtTime(gapTimeA)}</div>`:
+            '<div class="np-card__time">—</div>'}</div>
+          <div class="np-card ${isLeaderB?"np-card--green":"np-card--ttl"}">${isLeaderB?'<div class="np-card__time">LEADER</div>':
+            Number.isFinite(targetB)&&targetB>0?`<div class="np-card__time">${fmtTime(targetB)}</div>`:
+            Number.isFinite(gapTimeB)&&gapTimeB>0.005?`<div style="font-size:0.64rem;color:var(--text-dim)">achterstand</div><div class="np-card__time">${fmtTime(gapTimeB)}</div>`:
+            '<div class="np-card__time">—</div>'}</div>
         </div>
       </div>
       <div class="np-cards__section">
