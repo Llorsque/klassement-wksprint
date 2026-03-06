@@ -683,18 +683,22 @@ function fillTile3NextPair(dist){
   const lPts=standings?.leader?.currentPoints;
   const leaderName=standings?.leader?shortName(standings.leader.name):"P1";
 
-  // Time to lead: calculate the actual time the rider needs to ride
-  // = leader's time on this distance − (gap in points × divisor)
-  const leader=standings?.leader;
-  const leaderTime=leader?leader.seconds[dist.key]:null;// leader's time on selected distance
-  const gapA=Number.isFinite(pA)&&Number.isFinite(lPts)?pA-lPts:null;
-  const gapB=Number.isFinite(pB)&&Number.isFinite(lPts)?pB-lPts:null;
-  const gapTimeA=Number.isFinite(gapA)?gapA*dist.divisor:null;
-  const gapTimeB=Number.isFinite(gapB)?gapB*dist.divisor:null;
-  // Target time = leader's time on this distance − gap in seconds
-  // If leader hasn't ridden yet, show gap only
-  const targetA=Number.isFinite(leaderTime)&&Number.isFinite(gapTimeA)?leaderTime-gapTimeA:null;
-  const targetB=Number.isFinite(leaderTime)&&Number.isFinite(gapTimeB)?leaderTime-gapTimeB:null;
+  // Time to lead: what time must the rider ride on THIS distance to match P1?
+  // Formula: target = (leader_total − rider_other_pts) × divisor
+  // Where rider_other_pts = rider's points on all distances EXCEPT the selected one
+  function calcTarget(rider){
+    if(!rider||!Number.isFinite(lPts))return null;
+    let otherPts=0;
+    for(const d of ds){
+      if(d.key===dist.key)continue;// skip selected distance
+      const p=rider.points[d.key];
+      if(Number.isFinite(p))otherPts+=p;
+    }
+    const target=(lPts-otherPts)*dist.divisor;
+    return target>0?target:null;
+  }
+  const targetA=calcTarget(rA);
+  const targetB=calcTarget(rB);
   const isLeaderA=rA.rank===1,isLeaderB=rB.rank===1;
 
   // Mutual difference in points → time on this distance
@@ -757,12 +761,10 @@ function fillTile3NextPair(dist){
         <div class="np-cards__label">🎯 Tijd voor P1 op ${esc(dist.label)}</div>
         <div class="np-cards__pair">
           <div class="np-card ${isLeaderA?"np-card--green":"np-card--ttl"}">${isLeaderA?'<div class="np-card__time">LEADER</div>':
-            Number.isFinite(targetA)&&targetA>0?`<div class="np-card__time">${fmtTime(targetA)}</div>`:
-            Number.isFinite(gapTimeA)&&gapTimeA>0.005?`<div style="font-size:0.64rem;color:var(--text-dim)">achterstand</div><div class="np-card__time">${fmtTime(gapTimeA)}</div>`:
+            Number.isFinite(targetA)?`<div class="np-card__time">${fmtTime(targetA)}</div>`:
             '<div class="np-card__time">—</div>'}</div>
           <div class="np-card ${isLeaderB?"np-card--green":"np-card--ttl"}">${isLeaderB?'<div class="np-card__time">LEADER</div>':
-            Number.isFinite(targetB)&&targetB>0?`<div class="np-card__time">${fmtTime(targetB)}</div>`:
-            Number.isFinite(gapTimeB)&&gapTimeB>0.005?`<div style="font-size:0.64rem;color:var(--text-dim)">achterstand</div><div class="np-card__time">${fmtTime(gapTimeB)}</div>`:
+            Number.isFinite(targetB)?`<div class="np-card__time">${fmtTime(targetB)}</div>`:
             '<div class="np-card__time">—</div>'}</div>
         </div>
       </div>
