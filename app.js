@@ -421,7 +421,7 @@ function computeStandings(){
   const parts=buildParticipants(g);
   const athletes=parts.map(p=>{
     const a={name:p.name,country:p.country,active:isActive(p.name),times:{},seconds:{},points:{},distRanks:{}};
-    for(const d of ds){const r=(dataCache[g][d.key]??[]).find(x=>x.name===p.name);if(r){a.times[d.key]=r.time;a.seconds[d.key]=r.seconds;a.points[d.key]=trunc3(r.seconds/d.divisor)}}
+    for(const d of ds){const r=(dataCache[g][d.key]??[]).find(x=>x.name===p.name);if(r){a.times[d.key]=r.time;a.seconds[d.key]=r.seconds;a.points[d.key]=trunc3(Math.round(r.seconds*100)/100/d.divisor)}}
     return a;
   });
   for(const d of ds){const s=athletes.filter(a=>Number.isFinite(a.seconds[d.key])).sort((x,y)=>x.seconds[d.key]-y.seconds[d.key]);s.forEach((a,i)=>a.distRanks[d.key]=i+1)}
@@ -764,7 +764,7 @@ function renderDistance(dKey){
     const badge=recordBadge(r.record);
     const pb=getPB(r.name,dist.key);
     const pbStr=pb?`<span style="color:var(--orange)">${pb}</span>`:"";
-    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono" style="color:var(--orange)">${pbStr}</td><td class="mono">${fmtPts(trunc3(r.seconds/dist.divisor))}</td><td>${dStr}</td></tr>`;
+    return`<tr class="${podCls(rk)}"><td><strong>${rk}</strong> ${medal(rk)}</td><td><span class="athlete" data-name="${esc(r.name)}">${esc(r.name)}</span> <span class="country">${esc(r.country)}</span></td><td class="mono">${fmtTime(r.seconds)} ${badge}</td><td class="mono" style="color:var(--orange)">${pbStr}</td><td class="mono">${fmtPts(trunc3(Math.round(r.seconds*100)/100/dist.divisor))}</td><td>${dStr}</td></tr>`;
   }).join("");
 
   // Sidebar standings
