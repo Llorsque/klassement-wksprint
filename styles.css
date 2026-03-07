@@ -51,6 +51,12 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-he
 .tab:hover{color:var(--text)}
 .tab.active{background:var(--isu-blue);color:#fff}
 
+/* ── Zoom controls ───────────────────────────────────── */
+.zoom-controls{display:flex;align-items:center;gap:2px}
+.zoom-btn{background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);width:1.6rem;height:1.6rem;border-radius:4px;cursor:pointer;font-size:0.85rem;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .15s;padding:0;line-height:1}
+.zoom-btn:hover{border-color:var(--isu-blue);color:var(--isu-blue)}
+.zoom-level{font-size:0.64rem;color:var(--text-dim);min-width:2.5rem;text-align:center;font-family:var(--font-mono)}
+
 /* ── Layout ──────────────────────────────────────────── */
 .layout{display:grid;grid-template-columns:var(--sidebar-w) 1fr;height:calc(100vh - var(--topbar-h))}
 .sidebar{display:flex;flex-direction:column;justify-content:space-between;padding:var(--pad) calc(var(--pad)*.6);border-right:1px solid var(--border);background:var(--surface-1);overflow-y:auto}

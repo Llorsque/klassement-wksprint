@@ -22,9 +22,16 @@
         <span id="statusText">Loading…</span>
       </span>
     </div>
-    <div id="genderTabs" class="tab-row">
+    <div style="display:flex;align-items:center;gap:4px">
+      <div id="zoomControls" class="zoom-controls">
+        <button class="zoom-btn" id="zoomOut">−</button>
+        <span class="zoom-level" id="zoomLevel">100%</span>
+        <button class="zoom-btn" id="zoomIn">+</button>
+      </div>
+      <div id="genderTabs" class="tab-row">
       <button class="tab active" data-gender="v">Women</button>
       <button class="tab" data-gender="m">Men</button>
+    </div>
     </div>
   </header>
 

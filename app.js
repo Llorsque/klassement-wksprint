@@ -1104,10 +1104,26 @@ function startPoll(){
   },POLL_MS);
 }
 
+// ── ZOOM ─────────────────────────────────────────────────
+let zoomPct=100;
+function applyZoom(){
+  // Base formula matches the CSS clamp: ~12px at 1280 → 20px at 2560
+  const base=7+0.55*window.innerWidth/100;// same as CSS calc(7px + 0.55vw)
+  const scaled=base*(zoomPct/100);
+  document.documentElement.style.fontSize=`${Math.max(10,Math.min(26,scaled))}px`;
+  const lbl=document.getElementById("zoomLevel");
+  if(lbl)lbl.textContent=zoomPct+"%";
+}
+function initZoom(){
+  document.getElementById("zoomIn")?.addEventListener("click",()=>{zoomPct=Math.min(150,zoomPct+10);applyZoom()});
+  document.getElementById("zoomOut")?.addEventListener("click",()=>{zoomPct=Math.max(60,zoomPct-10);applyZoom()});
+  document.getElementById("zoomLevel")?.addEventListener("click",()=>{zoomPct=100;applyZoom()});// click % to reset
+}
+
 // ── BOOT ────────────────────────────────────────────────
 async function boot(){
   try{
-    cacheEls();loadInactive();bindEvents();render();
+    cacheEls();loadInactive();bindEvents();initZoom();render();
     await fetchGender(state.gender);
     render();
     console.log("[WK] Boot complete ✅");startPoll();
